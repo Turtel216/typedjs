@@ -1,0 +1,32 @@
+let apply = (f, x) => f(x);
+let id = (z) => z;
+let r = apply(id, 10);
+
+// Some comment
+let a = id(42);
+let a2: Bool = id(true);
+
+function add(x, y): Int {
+  return x + y;
+}
+
+let b = add(a, 2);
+
+let x = if (true) 1 else 0;
+
+let arr = [true, false, true];
+let ff: Bool = arr[1];
+
+let o = { a: 1, b: 2 };
+
+function get(obj: {a: Int, b: Int}): Int {
+  return obj.a;
+}
+
+let ox: Int = get(o);
+
+let typedLamda = (i: Int) : Int => i + 1;
+
+function high(f: (Int) -> Int): Int {
+  return f(2);
+}
