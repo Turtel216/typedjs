@@ -44,13 +44,13 @@ Implemented:
 TypedJS follows a classic frontend + lowering architecture:
 
 1. **Parse** source text into TypedJS AST
-   `TypedJS.Parser`
+   `Parser`
 2. **Typecheck / Infer** using HM constraints + unification
-   `TypedJS.Typecheck`
-3. **Lower** typed AST to JavaScript AST (type erasure)
-   `TypedJS.Lower`
-4. **Pretty-print** JavaScript AST to readable JS source
-   `TypedJS.JSPretty`
+   `Typecheck`
+3. **Desuger** typed AST to JavaScript AST (type erasure)
+   `Desuger`
+4. **Emit** JavaScript AST to readable JS source
+   `Emit`
 
 ---
 
@@ -100,6 +100,13 @@ let id = (z) => z;
 let result = apply(id, 42);
 ```
 
+### Prelude
+
+```ts 
+let x = 5;
+print(5); // maps to Javascript's console.log
+```
+
 ---
 
 ## Type System (Current)
@@ -126,10 +133,10 @@ src/
   Parser.hs      -- Lexer+parser (Megaparsec), TypedJS AST definition
   Typecheck.hs   -- HM inference, constraints, unification
   JSAst.hs       -- JavaScript target AST
-  Desuger.hs       -- TypedJS AST -> JS AST lowering (type erasure)
-  Emit.hs    -- JavaScript code generation
+  Desuger.hs     -- TypedJS AST -> JS AST lowering (type erasure)
+  Emit.hs        -- JavaScript code generation
 app/
-  Main.hs          -- CLI entry point (parse -> typecheck -> emit JS)
+  Main.hs        -- CLI entry point (parse -> typecheck -> emit JS)
 ```
 
 ---
@@ -147,12 +154,6 @@ cabal build
 ```bash
 cabal run
 ```
-
-Typical `Main` flow:
-
-- Reads `example.tjs`
-- Parses + typechecks
-- Writes generated JavaScript to `out.js`
 
 ---
 
