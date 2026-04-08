@@ -1,24 +1,39 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | TypedJs Parser implemented using Parser combinators
 module Parser where
 
+import Ast
 import Control.Monad (void)
 import Data.Functor (($>))
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Void as V
 import Text.Megaparsec
-  ( Parsec, (<|>), between, choice, eof, many, optional, runParser
-  , sepBy, sepBy1, try, notFollowedBy, satisfy
+  ( Parsec,
+    between,
+    choice,
+    eof,
+    many,
+    notFollowedBy,
+    optional,
+    runParser,
+    satisfy,
+    sepBy,
+    sepBy1,
+    try,
+    (<|>),
   )
 import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
-  ( alphaNumChar, char, letterChar, space1, string )
+  ( alphaNumChar,
+    char,
+    letterChar,
+    space1,
+    string,
+  )
 import qualified Text.Megaparsec.Char.Lexer as L
-import Ast
-
 
 -- | Parser combinator
 type Parser = Parsec V.Void Text
@@ -27,14 +42,14 @@ type Parser = Parsec V.Void Text
 parseProgram :: FilePath -> Text -> Either String Program
 parseProgram fp src =
   case runParser (sc *> pProgram <* eof) fp src of
-    Left e  -> Left (MP.errorBundlePretty e)
+    Left e -> Left (MP.errorBundlePretty e)
     Right x -> Right x
 
 -- | Ignores spaces and comments
 sc :: Parser ()
 sc = L.space space1 lineCmnt blockCmnt
   where
-    lineCmnt  = L.skipLineComment "//"
+    lineCmnt = L.skipLineComment "//"
     blockCmnt = L.skipBlockComment "/*" "*/"
 
 -- | Helper for parsing a lexeme
@@ -51,7 +66,7 @@ parens = between (symbol "(") (symbol ")")
 
 -- | Consume braces '{'
 braces :: Parser a -> Parser a
-braces   = between (symbol "{") (symbol "}")
+braces = between (symbol "{") (symbol "}")
 
 -- | Consume brackets '['
 brackets :: Parser a -> Parser a
@@ -76,24 +91,34 @@ arrow = symbol "=>"
 -- | TypedJs reserved keywords
 reserved :: [Text]
 reserved =
-  [ "let","function","return","if","else","while"
-  , "true","false","null"
-  , "Int","Bool","String"
+  [ "let",
+    "function",
+    "return",
+    "if",
+    "else",
+    "while",
+    "true",
+    "false",
+    "null",
+    "Int",
+    "Bool",
+    "String"
   ]
 
 -- | Parse identifier
 identifier :: Parser Text
 identifier = lexeme . try $ do
-  x  <- letterChar <|> char '_' <|> char '$'
+  x <- letterChar <|> char '_' <|> char '$'
   xs <- many (alphaNumChar <|> char '_' <|> char '$')
-  let n = T.pack (x:xs)
+  let n = T.pack (x : xs)
   if n `elem` reserved
     then fail ("reserved word " <> T.unpack n)
     else pure n
 
 rword :: Text -> Parser ()
 rword w = lexeme . try $ string w *> notFollowedBy identTail
-  where identTail = alphaNumChar <|> char '_' <|> char '$'
+  where
+    identTail = alphaNumChar <|> char '_' <|> char '$'
 
 -- | Parse String literal. Allows both "" and '', similar to Javascript
 stringLit :: Parser Text
@@ -112,15 +137,16 @@ pProgram = Program <$> many pStmt
 
 -- | Parse statement
 pStmt :: Parser Stmt
-pStmt = choice
-  [ try pFunDecl
-  , try pLet
-  , pReturn
-  , pIf
-  , pWhile
-  , SBlock <$> pBlock
-  , pExprStmt
-  ]
+pStmt =
+  choice
+    [ try pFunDecl,
+      try pLet,
+      pReturn,
+      pIf,
+      pWhile,
+      SBlock <$> pBlock,
+      pExprStmt
+    ]
 
 -- | Parse Code block
 pBlock :: Parser Block
@@ -196,54 +222,84 @@ pAssign = do
   lhs <- pLogicOr
   optional (symbol "=") >>= \case
     Nothing -> pure lhs
-    Just _  -> EAssign lhs <$> pAssign
+    Just _ -> EAssign lhs <$> pAssign
 
 -- | Parse Logical Or
 pLogicOr :: Parser Expr
 pLogicOr = chainl1 pLogicAnd (symbol "||" $> EBinary Or)
 
--- | Parse Logical And 
+-- | Parse Logical And
 pLogicAnd :: Parser Expr
 pLogicAnd = chainl1 pEquality (symbol "&&" $> EBinary And)
 
--- | Parse Equality expression. Both '==' and '!=' 
+-- | Parse Equality expression. Both '==' and '!='
 pEquality :: Parser Expr
-pEquality = chainl1 pRelational (choice
-  [ symbol "==" $> EBinary Eq
-  , symbol "!=" $> EBinary Neq
-  ])
+pEquality =
+  chainl1
+    pRelational
+    ( choice
+        [ symbol "==" $> EBinary Eq,
+          symbol "!=" $> EBinary Neq
+        ]
+    )
 
 -- | Parse relational expressions
 pRelational :: Parser Expr
-pRelational = chainl1 pAdditive (choice
-  [ symbol "<=" $> EBinary Lte
-  , symbol "<"  $> EBinary Lt
-  , symbol ">=" $> EBinary Gte
-  , symbol ">"  $> EBinary Gt
-  ])
+pRelational =
+  chainl1
+    pAdditive
+    ( choice
+        [ symbol "<=" $> EBinary Lte,
+          symbol "<" $> EBinary Lt,
+          symbol ">=" $> EBinary Gte,
+          symbol ">" $> EBinary Gt
+        ]
+    )
 
--- | Parse Additive binary operation(+/-)
+-- | Parse Additive binary operation:
+--
+-- * `+`
+--
+-- * `-`
 pAdditive :: Parser Expr
-pAdditive = chainl1 pMultiplicative (choice
-  [ symbol "+" $> EBinary Add
-  , symbol "-" $> EBinary Sub
-  ])
+pAdditive =
+  chainl1
+    pMultiplicative
+    ( choice
+        [ symbol "+" $> EBinary Add,
+          symbol "-" $> EBinary Sub
+        ]
+    )
 
--- | Parse multiplcative Binary operation: '*', '/', '%'
+-- | Parse multiplcative Binary operation:
+--
+-- * `*`
+--
+-- * `/`
+--
+-- * `&`
 pMultiplicative :: Parser Expr
-pMultiplicative = chainl1 pUnary (choice
-  [ symbol "*" $> EBinary Mul
-  , symbol "/" $> EBinary Div
-  , symbol "%" $> EBinary Mod
-  ])
+pMultiplicative =
+  chainl1
+    pUnary
+    ( choice
+        [ symbol "*" $> EBinary Mul,
+          symbol "/" $> EBinary Div,
+          symbol "%" $> EBinary Mod
+        ]
+    )
 
--- | Parse Unary operation: '!', '-'
+-- | Parse Unary operation:
+--
+-- * `!`
+--
+-- * `-`
 pUnary :: Parser Expr
 pUnary =
   choice
-    [ symbol "!" *> (EUnary Not <$> pUnary)
-    , symbol "-" *> (EUnary Neg <$> pUnary)
-    , pPostfix
+    [ symbol "!" *> (EUnary Not <$> pUnary),
+      symbol "-" *> (EUnary Neg <$> pUnary),
+      pPostfix
     ]
 
 pPostfix :: Parser Expr
@@ -255,27 +311,28 @@ pPostfix = do
       choice
         [ try $ do
             args <- parens (map Arg <$> (pExpr `sepBy` comma))
-            pChain (ECall e args)
-        , try $ do
+            pChain (ECall e args),
+          try $ do
             void (symbol ".")
             f <- identifier
-            pChain (EMember e f)
-        , try $ do
+            pChain (EMember e f),
+          try $ do
             ix <- brackets pExpr
-            pChain (EIndex e ix)
-        , pure e
+            pChain (EIndex e ix),
+          pure e
         ]
 
 pPrimary :: Parser Expr
-pPrimary = choice
-  [ try pLambda
-  , try pIfExpr
-  , ELit <$> pLiteral
-  , try pObject
-  , try pArray
-  , EVar <$> identifier
-  , EParens <$> parens pExpr
-  ]
+pPrimary =
+  choice
+    [ try pLambda,
+      try pIfExpr,
+      ELit <$> pLiteral,
+      try pObject,
+      try pArray,
+      EVar <$> identifier,
+      EParens <$> parens pExpr
+    ]
 
 -- | Parse Lambda Expression
 pLambda :: Parser Expr
@@ -297,19 +354,25 @@ pIfExpr = do
   pure (EIfExpr c t f)
 
 -- | Parse Literal:
--- |   - true
--- |   - false
--- |   - null
--- |   - String literals
--- |   - Integer literals
+--
+-- * true
+--
+-- * false
+--
+-- * null
+--
+-- * String literals
+--
+-- * Integer literals
 pLiteral :: Parser Literal
-pLiteral = choice
-  [ rword "true"  $> LBool True
-  , rword "false" $> LBool False
-  , rword "null"  $> LNull
-  , LString <$> stringLit
-  , LInt <$> integer
-  ]
+pLiteral =
+  choice
+    [ rword "true" $> LBool True,
+      rword "false" $> LBool False,
+      rword "null" $> LNull,
+      LString <$> stringLit,
+      LInt <$> integer
+    ]
 
 -- | Parse Arrays
 pArray :: Parser Expr
@@ -336,13 +399,15 @@ pFunType = do
   lhs <- pTypeAtomOrTuple
   rest lhs
   where
-    rest lhs = (do
-      void (symbol "->")
-      rhs <- pFunType
-      case lhs of
-        TFun as r -> pure (TFun as (collapse rhs r))
-        _         -> pure (TFun [lhs] rhs)
-      ) <|> pure lhs
+    rest lhs =
+      ( do
+          void (symbol "->")
+          rhs <- pFunType
+          case lhs of
+            TFun as r -> pure (TFun as (collapse rhs r))
+            _ -> pure (TFun [lhs] rhs)
+      )
+        <|> pure lhs
 
     collapse r1 r2 = TFun [r2] r1
 
@@ -352,22 +417,23 @@ pTypeAtomOrTuple =
     [ parens $ do
         ts <- pType `sepBy` comma
         case ts of
-          []  -> fail "empty type tuple not allowed"
+          [] -> fail "empty type tuple not allowed"
           [t] -> pure t
-          xs  -> pure (TFun xs (TVar "_Tuple")) -- simple placeholder strategy
-    , pTypeAtom
+          xs -> pure (TFun xs (TVar "_Tuple")), -- simple placeholder strategy
+      pTypeAtom
     ]
 
 pTypeAtom :: Parser Type
-pTypeAtom = choice
-  [ rword "Int"    $> TInt
-  , rword "Bool"   $> TBool
-  , rword "String" $> TString
-  , try pArrayType
-  , try pObjectType
-  , try pTypeApp
-  , TVar <$> identifier
-  ]
+pTypeAtom =
+  choice
+    [ rword "Int" $> TInt,
+      rword "Bool" $> TBool,
+      rword "String" $> TString,
+      try pArrayType,
+      try pObjectType,
+      try pTypeApp,
+      TVar <$> identifier
+    ]
 
 -- | Parse Array type declaration
 pArrayType :: Parser Type
@@ -397,8 +463,9 @@ chainl1 p op = do
   rest x
   where
     rest x =
-      (do
+      ( do
           f <- op
           y <- p
-          rest (f x y))
-      <|> pure x
+          rest (f x y)
+      )
+        <|> pure x

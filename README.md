@@ -1,93 +1,249 @@
-# typedjs
+# TypedJS - A Hindley–Milner Typed JavaScript Dialect
 
+TypedJS is a **source-to-source compiler** for a statically typed JavaScript-like language with **Hindley–Milner (HM) type inference**, implemented in Haskell.
 
+It parses TypedJS source code, performs static type checking, and lowers the typed AST into readable JavaScript output.
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Why TypedJS?
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+JavaScript is expressive, but dynamic typing can move certain bugs from compile-time to runtime. TypedJS explores a different design point:
 
-## Add your files
+- Familiar JavaScript-like syntax
+- Strong static typing
+- Type inference (HM style) for reduced annotation burden
+- Readable JavaScript code generation
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+TypedJS is intended for experimentation, education, and as a foundation for more advanced language tooling.
+
+---
+
+## Current Status
+
+Implemented:
+
+- Parser (Megaparsec-based)
+- Typed AST
+- HM-style type inference/checking
+- Type annotations (optional in many places)
+- Source-to-source lowering to JavaScript
+- Precedence-aware JavaScript pretty-printer
+
+ In progress / simplified semantics in current implementation:
+
+- Object typing is currently closed/exact in unification-heavy paths
+- No row polymorphism yet
+- Return-flow analysis is basic unless enhanced with explicit return constraints
+- Mutation/immutability semantics are currently minimal and evolving
+
+---
+
+## Compiler Pipeline
+
+TypedJS follows a classic frontend + lowering architecture:
+
+1. **Parse** source text into TypedJS AST
+   `TypedJS.Parser`
+2. **Typecheck / Infer** using HM constraints + unification
+   `TypedJS.Typecheck`
+3. **Lower** typed AST to JavaScript AST (type erasure)
+   `TypedJS.Lower`
+4. **Pretty-print** JavaScript AST to readable JS source
+   `TypedJS.JSPretty`
+
+---
+
+## Language Overview
+
+### Variable Binding
+
+```ts
+let x = 42;
+let y: Int = x + 1;
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/papakonstantinou/typedjs.git
-git branch -M main
-git push -uf origin main
+
+### Functions
+
+```ts
+function add(x: Int, y: Int): Int {
+  return x + y;
+}
 ```
 
-## Integrate with your tools
+### Lambdas
 
-* [Set up project integrations](https://gitlab.com/papakonstantinou/typedjs/-/settings/integrations)
+```ts
+let inc = (n: Int): Int => n + 1;
+```
 
-## Collaborate with your team
+### Conditionals
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```ts
+let v = if (true) 1 else 0;
+```
 
-## Test and Deploy
+### Arrays and Objects
 
-Use the built-in continuous integration in GitLab.
+```ts
+let arr = [1, 2, 3];
+let obj = { a: 1, b: 2 };
+let x: Int = obj.a;
+```
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+### Higher-Order Functions
 
-***
+```ts
+let apply = (f, x) => f(x);
+let id = (z) => z;
+let result = apply(id, 42);
+```
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Type System (Current)
 
-## Suggestions for a good README
+TypedJS currently supports:
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+- Primitive types: `Int`, `Bool`, `String`
+- Type inference for let-bound variables and lambda parameters
+- Function types and annotations
+- Let-polymorphism (`let id = (x) => x`)
+- Unification-based checking of expressions and calls
 
-## Name
-Choose a self-explaining name for your project.
+### Notes
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+- `+`, `-`, `*`, `/`, `%` are currently numeric (`Int`) operators.
+- Equality and logical operators are type-checked.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+---
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## Project Structure
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```text
+src/
+  Parser.hs      -- Lexer+parser (Megaparsec), TypedJS AST definition
+  Typecheck.hs   -- HM inference, constraints, unification
+  JSAst.hs       -- JavaScript target AST
+  Desuger.hs       -- TypedJS AST -> JS AST lowering (type erasure)
+  Emit.hs    -- JavaScript code generation
+app/
+  Main.hs          -- CLI entry point (parse -> typecheck -> emit JS)
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+---
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Build & Run
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+### Build
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+cabal build
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### Run
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```bash
+cabal run
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Typical `Main` flow:
 
-## License
-For open source projects, say how it is licensed.
+- Reads `example.tjs`
+- Parses + typechecks
+- Writes generated JavaScript to `out.js`
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+---
+
+## Example
+
+### Input (`example.tjs`)
+
+```ts
+let id = (x) => x;
+let a = id(42);
+
+function add(x: Int, y: Int): Int {
+  return x + y;
+}
+
+let b = add(a, 1);
+```
+
+### Output (`out.js`)
+
+```js
+const id = (x) => x;
+const a = id(42);
+function add(x, y) {
+  return x + y;
+}
+const b = add(a, 1);
+```
+
+---
+
+## Error Reporting
+
+Type errors are surfaced from the typechecker, for example:
+
+- Unbound variables
+- Unification failures (e.g. `Bool` passed where `Int` is required)
+- Duplicate bindings in same scope (if enabled via checker rule)
+- Missing object fields (based on current object typing model)
+
+---
+
+## Known Limitations
+
+- No modules/import system yet
+- No algebraic data types (ADTs) yet
+- No pattern matching
+- No row polymorphism for structural object typing
+- No optimization pipeline yet (just direct lowering)
+
+---
+
+## Future Features
+
+### 1) Immutability by Default (Planned)
+
+TypedJS will move toward a model where bindings are immutable unless explicitly marked mutable.
+
+Potential direction:
+
+- `let` = immutable (default)
+- `mut` (or similar) for mutable bindings
+- Assignment allowed only for mutable references
+- Stronger guarantees for reasoning and optimization
+- Better alignment with functional/HM foundations
+
+### 2) Row Polymorphism for Objects
+
+Enable flexible object typing such as passing `{a:Int, b:Int}` where `{a:Int}` is expected, while preserving static safety.
+
+### 3) Richer Type Features
+
+- Parametric data types and aliases
+- Exhaustive pattern matching
+- Union/intersection-like encodings (carefully designed)
+- Better nullability story
+
+### 4) Improved Diagnostics
+
+- Source-span-aware type errors
+- Better mismatch explanations and hints
+- Suggested fixes
+
+### 5) Safer/Stronger Frontend Semantics
+
+- Explicit block scoping rules
+- Return-flow checking improvements
+- Duplicate declaration policy controls
+
+### 6) Developer Tooling
+
+- Test suite + golden tests for parser/typechecker/lowering
+- LSP features (hover/type info/diagnostics)
+- Formatter and linting tools for TypedJS
