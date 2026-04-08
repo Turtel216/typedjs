@@ -20,7 +20,7 @@ optionsParser = Options
         ( long "opt"
        <> short 'O'
        <> help "Enable compiler optimizations" )
-  <*> optional (option auto
+  <*> optional (option str 
         ( long "output"
        <> short 'o'
        <> help "Output file emited by Compiler[default out.js]" ))

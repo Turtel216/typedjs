@@ -28,4 +28,4 @@ main = do
             Right _ -> do
                 let js = emitProgram (lowerProgram prog)
                 T.writeFile outputF js
-                putStrLn "Generated out.js"
+                putStrLn $ "Generated " ++ outputF
