@@ -37,12 +37,13 @@ library
 executable typedjsc 
     import:           warnings
     main-is:          Main.hs
-    -- other-modules:
+    other-modules:    Cli
     -- other-extensions:
     build-depends:
         base ^>=4.18.3.0,
         typedjs,
-        text
+        text,
+        optparse-applicative
 
     hs-source-dirs:   app
     default-language: Haskell2010
