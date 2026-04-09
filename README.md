@@ -1,4 +1,4 @@
-# TypedJS - A Hindley–Milner Typed JavaScript Dialect
+# TypedJS - A Typed JavaScript Dialect
 
 TypedJS is a **source-to-source compiler** for a statically typed JavaScript-like language with **Hindley–Milner (HM) type inference**, implemented in Haskell.
 
@@ -29,29 +29,15 @@ Implemented:
 - Type annotations (optional in many places)
 - Source-to-source lowering to JavaScript
 - Precedence-aware JavaScript pretty-printer
+- Polymorphic functions and type aliases
+- Immutability by default (`let` = immutable, `let mut` = mutable)
+- Mutation checks enforced at type-check time
 
  In progress / simplified semantics in current implementation:
 
+- Algebraic Data Types(ADTs) and pattern matching
 - Object typing is currently closed/exact in unification-heavy paths
-- No row polymorphism yet
-- Immutability by default (`let` = immutable, `let mut` = mutable)
-- Mutation checks enforced at type-check time
 - Return-flow analysis is basic unless enhanced with explicit return constraints
-
----
-
-## Compiler Pipeline
-
-TypedJS follows a classic frontend + lowering architecture:
-
-1. **Parse** source text into TypedJS AST
-   `Parser`
-2. **Typecheck / Infer** using HM constraints + unification
-   `Typecheck`
-3. **Desuger** typed AST to JavaScript AST (type erasure)
-   `Desuger`
-4. **Emit** JavaScript AST to readable JS source
-   `Emit`
 
 ---
 
@@ -84,10 +70,21 @@ function add(x: Int, y: Int): Int {
 }
 ```
 
+### Polymorphic functions 
+
+```ts
+function id(a): a {
+    return a;
+  }
+
+let a = id(2);
+let b = id(true);
+```
+
 ### Lambdas
 
 ```ts
-let inc = (n: Int): Int => n + 1;
+let inc = (n: Int): Int => n + 1; // The type annotations are optional
 ```
 
 ### Conditionals
@@ -119,6 +116,15 @@ let x = 5;
 print(5); // maps to Javascript's console.log
 ```
 
+### User defined Types and Parametric type aliases
+
+```ts 
+type Pair<A, B> = { first: A, second: B };
+
+let p: Pair<Int, String> = { first: 42, second: "hello" };
+print(p.first);
+```
+
 ---
 
 ## Type System (Current)
@@ -130,26 +136,12 @@ TypedJS currently supports:
 - Function types and annotations
 - Let-polymorphism (`let id = (x) => x`)
 - Unification-based checking of expressions and calls
+- Polymorphic functions and type aliases
 
 ### Notes
 
 - `+`, `-`, `*`, `/`, `%` are currently numeric (`Int`) operators.
 - Equality and logical operators are type-checked.
-
----
-
-## Project Structure
-
-```text
-src/
-  Parser.hs      -- Lexer+parser (Megaparsec), TypedJS AST definition
-  Typecheck.hs   -- HM inference, constraints, unification
-  JSAst.hs       -- JavaScript target AST
-  Desuger.hs     -- TypedJS AST -> JS AST lowering (type erasure)
-  Emit.hs        -- JavaScript code generation
-app/
-  Main.hs        -- CLI entry point (parse -> typecheck -> emit JS)
-```
 
 ---
 
@@ -227,7 +219,6 @@ Type errors are surfaced from the typechecker, for example:
 - No modules/import system yet
 - No algebraic data types (ADTs) yet
 - No pattern matching
-- No row polymorphism for structural object typing
 - No optimization pipeline yet (just direct lowering)
 
 ---
@@ -240,7 +231,6 @@ Enable flexible object typing such as passing `{a:Int, b:Int}` where `{a:Int}` i
 
 ### 2) Richer Type Features
 
-- Parametric data types and aliases
 - Exhaustive pattern matching
 - Union/intersection-like encodings (carefully designed)
 - Better nullability
