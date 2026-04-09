@@ -114,18 +114,25 @@ data TypeError
   | MissingField Text
   | DuplicateBinding Text
   | ImmutableAssign Text
+  | UnboundType Text
+  | DuplicateType Text
+  | TypeArityMismatch Text Int Int
   | OtherTypeError Text
   deriving (Eq, Show)
 
+-- | Registered type aliases: name → (type parameters, body)
+type TypeDeclEnv = M.Map Text ([Name], Type)
+
 data InferState = InferState
-  { count :: Int
+  { count     :: Int
+  , typeDecls :: TypeDeclEnv
   }
 
 newtype Infer a = Infer {unInfer :: ExceptT TypeError (State InferState) a}
   deriving (Functor, Applicative, Monad, MonadError TypeError, MonadState InferState)
 
 runInfer :: Infer a -> Either TypeError a
-runInfer m = evalState (runExceptT (unInfer m)) (InferState 0)
+runInfer m = evalState (runExceptT (unInfer m)) (InferState 0 M.empty)
 
 fresh :: Infer IType
 fresh = do
@@ -180,6 +187,21 @@ bind a t
   | a `S.member` ftv t = throwError (InfiniteType a t)
   | otherwise = pure (Subst (M.singleton a t))
 
+-- | Substitute type variables in a surface Type (used for parametric alias expansion).
+-- Type parameters may appear as either @TVar n@ (lowercase) or @TApp n []@ (uppercase
+-- with no args), so both forms are checked against the substitution map.
+substSurfaceType :: M.Map Name Type -> Type -> Type
+substSurfaceType m = go
+  where
+    go = \case
+      TVar n      -> M.findWithDefault (TVar n) n m
+      TApp n [] | Just t <- M.lookup n m -> t   -- type parameter (uppercase)
+      TArray t    -> TArray (go t)
+      TObject fs  -> TObject [(k, go v) | (k, v) <- fs]
+      TApp n as   -> TApp n (map go as)
+      TFun as r   -> TFun (map go as) (go r)
+      t           -> t  -- TInt, TBool, TString pass through
+
 fromSurfaceType :: Type -> Infer IType
 fromSurfaceType = \case
   TInt -> pure TIntT
@@ -190,12 +212,18 @@ fromSurfaceType = \case
   TObject fields -> TObjectT . M.fromList <$> mapM go fields
     where
       go (k, v) = (k,) <$> fromSurfaceType v
-  TApp n args -> TCon n <$> mapM fromSurfaceType args
+  TApp n args -> do
+    decls <- gets typeDecls
+    case M.lookup n decls of
+      Nothing -> throwError (UnboundType n)
+      Just (params, body)
+        | length params /= length args ->
+            throwError (TypeArityMismatch n (length params) (length args))
+        | otherwise -> do
+            let substMap = M.fromList (zip params args)
+                expanded = substSurfaceType substMap body
+            fromSurfaceType expanded
   TFun as r -> TFunT <$> mapM fromSurfaceType as <*> fromSurfaceType r
-
---------------------------------------------------------------------------------
--- Inference for expressions
---------------------------------------------------------------------------------
 
 inferExpr :: TypeEnv -> Expr -> Infer (Subst, IType)
 inferExpr env = \case
@@ -396,6 +424,12 @@ inferStmt env = \case
     (s3, env') <- inferBlock (apply (compose s2 s1) env) body
     pure (compose s3 (compose s2 s1), env')
   SBlock b -> inferBlock env b
+  STypeDecl name params body -> do
+    decls <- gets typeDecls
+    when (M.member name decls) $
+      throwError (DuplicateType name)
+    modify' (\s -> s { typeDecls = M.insert name (params, body) decls })
+    pure (emptySubst, env)
   SFun name params mRet body -> do
     paramTypes <- mapM (\(Param _ mt) -> maybe fresh fromSurfaceType mt) params
     retType <- maybe fresh fromSurfaceType mRet

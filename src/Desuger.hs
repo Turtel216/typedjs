@@ -13,7 +13,12 @@ import Ast
 
 -- | Type erasure + structural lowering from TypedJS AST to JS AST.
 lowerProgram :: Program -> J.JSProgram
-lowerProgram (Program ss) = J.JSProgram (map lowerStmt ss)
+lowerProgram (Program ss) = J.JSProgram (map lowerStmt (filter (not . isTypeDecl) ss))
+
+-- | Type declarations are compile-time only and produce no JS output.
+isTypeDecl :: Stmt -> Bool
+isTypeDecl (STypeDecl {}) = True
+isTypeDecl _              = False
 
 -- | Lower Stmt into JsStmt
 lowerStmt :: Stmt -> J.JSStmt
@@ -40,8 +45,11 @@ lowerStmt = \case
   SBlock b ->
     J.JSBlockStmt (lowerBlock b)
 
+  STypeDecl {} ->
+    error "lowerStmt: STypeDecl should have been filtered out"
+
 lowerBlock :: Block -> J.JSBlock
-lowerBlock (Block ss) = J.JSBlock (map lowerStmt ss)
+lowerBlock (Block ss) = J.JSBlock (map lowerStmt (filter (not . isTypeDecl) ss))
 
 lowerExpr :: Expr -> J.JSExpr
 lowerExpr = \case

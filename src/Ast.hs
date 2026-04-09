@@ -22,6 +22,7 @@ data Stmt
   | SWhile Expr Block
   | SExpr Expr
   | SBlock Block
+  | STypeDecl Name [Name] Type   -- ^ type Foo<A, B> = { ... };
   deriving (Eq, Show)
 
 -- | Code block

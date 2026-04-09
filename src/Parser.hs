@@ -6,6 +6,7 @@ module Parser where
 
 import Ast
 import Control.Monad (void)
+import Data.Char (isUpper)
 import Data.Functor (($>))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -101,6 +102,7 @@ reserved =
     "true",
     "false",
     "null",
+    "type",
     "Int",
     "Bool",
     "String"
@@ -110,6 +112,16 @@ reserved =
 identifier :: Parser Text
 identifier = lexeme . try $ do
   x <- letterChar <|> char '_' <|> char '$'
+  xs <- many (alphaNumChar <|> char '_' <|> char '$')
+  let n = T.pack (x : xs)
+  if n `elem` reserved
+    then fail ("reserved word " <> T.unpack n)
+    else pure n
+
+-- | Parse an uppercase identifier (for type names like Point, Pair)
+upperIdentifier :: Parser Text
+upperIdentifier = lexeme . try $ do
+  x <- satisfy (\c -> isUpper c)
   xs <- many (alphaNumChar <|> char '_' <|> char '$')
   let n = T.pack (x : xs)
   if n `elem` reserved
@@ -140,7 +152,8 @@ pProgram = Program <$> many pStmt
 pStmt :: Parser Stmt
 pStmt =
   choice
-    [ try pFunDecl,
+    [ try pTypeDecl,
+      try pFunDecl,
       try pLet,
       pReturn,
       pIf,
@@ -164,6 +177,20 @@ pLet = do
   e <- pExpr
   void semi
   pure (SLet mutFlag n ty e)
+
+-- | Parse type alias declaration: @type Point = { x: Int, y: Int };@
+-- Also supports parametric aliases: @type Pair\<A, B\> = { first: A, second: B };@
+pTypeDecl :: Parser Stmt
+pTypeDecl = do
+  rword "type"
+  name <- upperIdentifier
+  params <- MP.option [] (angles (identifier `sepBy1` comma))
+  void (symbol "=")
+  body <- pType
+  void semi
+  pure (STypeDecl name params body)
+  where
+    angles = between (symbol "<") (symbol ">")
 
 -- | Parse Declaration
 pFunDecl :: Parser Stmt
@@ -434,8 +461,16 @@ pTypeAtom =
       try pArrayType,
       try pObjectType,
       try pTypeApp,
+      try pTypeRef,
       TVar <$> identifier
     ]
+
+-- | Parse a bare uppercase type reference (no angle brackets).
+-- E.g. @Point@ becomes @TApp "Point" []@.
+pTypeRef :: Parser Type
+pTypeRef = do
+  name <- upperIdentifier
+  pure (TApp name [])
 
 -- | Parse Array type declaration
 pArrayType :: Parser Type
