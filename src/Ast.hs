@@ -5,28 +5,48 @@ import Data.Text (Text)
 
 type Name = Text
 
+-- | Source position (1-indexed line and column)
+data Pos = Pos { posLine :: !Int, posCol :: !Int }
+  deriving (Eq, Ord, Show)
+
+-- | Source span from start to end
+data Span = Span { spanStart :: !Pos, spanEnd :: !Pos }
+  deriving (Eq, Ord, Show)
+
+-- | A dummy span for synthetic / generated nodes
+dummySpan :: Span
+dummySpan = Span (Pos 0 0) (Pos 0 0)
+
+-- | A value annotated with a source span
+data Located a = Located { locSpan :: !Span, locVal :: a }
+  deriving (Eq, Show)
+
+-- | Convenience aliases for located AST nodes
+type LExpr = Located Expr
+type LStmt = Located Stmt
+
 -- | Binding mutability qualifier
 data Mutability = Immutable | Mutable
   deriving (Eq, Show)
 
 -- | Complete program definition
-newtype Program = Program [Stmt]
+newtype Program = Program [LStmt]
   deriving (Eq, Show)
 
 -- | Language Statement
 data Stmt
-  = SLet Mutability Name (Maybe Type) Expr
+  = SLet Mutability Name (Maybe Type) LExpr
   | SFun Name [Param] (Maybe Type) Block
-  | SReturn (Maybe Expr)
-  | SIf Expr Block (Maybe Block)
-  | SWhile Expr Block
-  | SExpr Expr
+  | SReturn (Maybe LExpr)
+  | SIf LExpr Block (Maybe Block)
+  | SWhile LExpr Block
+  | SExpr LExpr
   | SBlock Block
   | STypeDecl Name [Name] Type   -- ^ type Foo<A, B> = { ... };
   deriving (Eq, Show)
 
 -- | Code block
-newtype Block = Block [Stmt]
+newtype Block = Block [LStmt]
   deriving (Eq, Show)
 
 -- | Function parameters
@@ -34,24 +54,24 @@ data Param = Param Name (Maybe Type)
   deriving (Eq, Show)
 
 -- | Function arguments
-data Arg = Arg Expr
+data Arg = Arg LExpr
   deriving (Eq, Show)
 
 -- | Language expression
 data Expr
   = EVar Name
   | ELit Literal
-  | ELam [Param] (Maybe Type) Expr
-  | ECall Expr [Arg]
-  | EMember Expr Name
-  | EIndex Expr Expr
-  | EObject [(Name, Expr)]
-  | EArray [Expr]
-  | EAssign Expr Expr
-  | EUnary UnOp Expr
-  | EBinary BinOp Expr Expr
-  | EIfExpr Expr Expr Expr
-  | EParens Expr
+  | ELam [Param] (Maybe Type) LExpr
+  | ECall LExpr [Arg]
+  | EMember LExpr Name
+  | EIndex LExpr LExpr
+  | EObject [(Name, LExpr)]
+  | EArray [LExpr]
+  | EAssign LExpr LExpr
+  | EUnary UnOp LExpr
+  | EBinary BinOp LExpr LExpr
+  | EIfExpr LExpr LExpr LExpr
+  | EParens LExpr
   deriving (Eq, Show)
 
 -- | Literals
