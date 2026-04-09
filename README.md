@@ -34,8 +34,9 @@ Implemented:
 
 - Object typing is currently closed/exact in unification-heavy paths
 - No row polymorphism yet
+- Immutability by default (`let` = immutable, `let mut` = mutable)
+- Mutation checks enforced at type-check time
 - Return-flow analysis is basic unless enhanced with explicit return constraints
-- Mutation/immutability semantics are currently minimal and evolving
 
 ---
 
@@ -58,10 +59,21 @@ TypedJS follows a classic frontend + lowering architecture:
 
 ### Variable Binding
 
-```ts
-let x = 42;
-let y: Int = x + 1;
+Bindings are **immutable by default**. Use `let mut` to declare a mutable binding:
 
+```ts
+let x = 42;        // immutable — compiles to `const`
+let mut y = 0;     // mutable  — compiles to `let`
+y = y + 1;         // OK
+
+// x = 10;         // TYPE ERROR: cannot assign to immutable binding `x`
+```
+
+Optional type annotations:
+
+```ts
+let a: Int = 42;
+let mut b: Int = 0;
 ```
 
 ### Functions
@@ -163,24 +175,37 @@ cabal run
 
 ```ts
 let id = (x) => x;
-let a = id(42);
+let a = id(1);
 
 function add(x: Int, y: Int): Int {
   return x + y;
 }
 
-let b = add(a, 1);
+let mut b = add(a, 1);
+
+if (b > 5) {
+  print(b);
+} else {
+  b = 100;
+  print(b);
+}
 ```
 
 ### Output (`out.js`)
 
 ```js
 const id = (x) => x;
-const a = id(42);
+const a = id(1);
 function add(x, y) {
   return x + y;
 }
-const b = add(a, 1);
+let b = add(a, 1);
+if (b > 5) {
+  console.log(b);
+} else {
+  b = 100;
+  console.log(b);
+}
 ```
 
 ---
@@ -191,7 +216,8 @@ Type errors are surfaced from the typechecker, for example:
 
 - Unbound variables
 - Unification failures (e.g. `Bool` passed where `Int` is required)
-- Duplicate bindings in same scope (if enabled via checker rule)
+- Immutable assignment (e.g. `x = 10` where `x` was declared with `let`)
+- Duplicate bindings in same scope
 - Missing object fields (based on current object typing model)
 
 ---
@@ -208,42 +234,30 @@ Type errors are surfaced from the typechecker, for example:
 
 ## Future Features
 
-### 1) Immutability by Default (Planned)
-
-TypedJS will move toward a model where bindings are immutable unless explicitly marked mutable.
-
-Potential direction:
-
-- `let` = immutable (default)
-- `mut` (or similar) for mutable bindings
-- Assignment allowed only for mutable references
-- Stronger guarantees for reasoning and optimization
-- Better alignment with functional/HM foundations
-
-### 2) Row Polymorphism for Objects
+### 1) Row Polymorphism for Objects
 
 Enable flexible object typing such as passing `{a:Int, b:Int}` where `{a:Int}` is expected, while preserving static safety.
 
-### 3) Richer Type Features
+### 2) Richer Type Features
 
 - Parametric data types and aliases
 - Exhaustive pattern matching
 - Union/intersection-like encodings (carefully designed)
-- Better nullability story
+- Better nullability
 
-### 4) Improved Diagnostics
+### 3) Improved Diagnostics
 
 - Source-span-aware type errors
 - Better mismatch explanations and hints
 - Suggested fixes
 
-### 5) Safer/Stronger Frontend Semantics
+### 4) Safer/Stronger Frontend Semantics
 
 - Explicit block scoping rules
 - Return-flow checking improvements
 - Duplicate declaration policy controls
 
-### 6) Developer Tooling
+### 5) Developer Tooling
 
 - Test suite + golden tests for parser/typechecker/lowering
 - LSP features (hover/type info/diagnostics)

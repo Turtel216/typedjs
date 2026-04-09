@@ -51,7 +51,8 @@ instance Show IType where
 data Scheme = Forall [TVarId] IType
   deriving (Eq, Show)
 
-type TypeEnv = M.Map Text Scheme
+-- | Each binding stores its type scheme and whether it is mutable.
+type TypeEnv = M.Map Text (Scheme, Mutability)
 
 newtype Subst = Subst (M.Map TVarId IType)
   deriving (Eq, Show, Semigroup, Monoid)
@@ -98,6 +99,10 @@ instance Types Scheme where
     let s' = Subst (foldr M.delete s as)
      in Forall as (apply s' t)
 
+instance Types (Scheme, Mutability) where
+  ftv (sch, _) = ftv sch
+  apply s (sch, m) = (apply s sch, m)
+
 instance Types TypeEnv where
   ftv env = S.unions (map ftv (M.elems env))
   apply s = M.map (apply s)
@@ -108,6 +113,7 @@ data TypeError
   | UnboundVariable Text
   | MissingField Text
   | DuplicateBinding Text
+  | ImmutableAssign Text
   | OtherTypeError Text
   deriving (Eq, Show)
 
@@ -135,7 +141,8 @@ instantiate (Forall vars t) = do
 
 generalize :: TypeEnv -> IType -> Scheme
 generalize env t =
-  let vars = S.toList (ftv t `S.difference` ftv env)
+  let envFtv = S.unions [ftv sch | (sch, _) <- M.elems env]
+      vars = S.toList (ftv t `S.difference` envFtv)
    in Forall vars t
 
 unify :: IType -> IType -> Infer Subst
@@ -195,7 +202,7 @@ inferExpr env = \case
   EVar x ->
     case M.lookup x env of
       Nothing -> throwError (UnboundVariable x)
-      Just s -> do t <- instantiate s; pure (emptySubst, t)
+      Just (sch, _) -> do t <- instantiate sch; pure (emptySubst, t)
   ELit l -> case l of
     LInt _ -> pure (emptySubst, TIntT)
     LBool _ -> pure (emptySubst, TBoolT)
@@ -239,7 +246,7 @@ inferExpr env = \case
     where
       addParam (e, ts) (Param n mt) = do
         t <- maybe fresh fromSurfaceType mt
-        pure (M.insert n (Forall [] t) e, ts <> [t])
+        pure (M.insert n (Forall [] t, Immutable) e, ts <> [t])
   ECall fn args -> do
     (sFn, tFn) <- inferExpr env fn
     (sArgs, argTs) <- inferArgList (apply sFn env) args
@@ -270,6 +277,12 @@ inferExpr env = \case
     let sAll = compose sArr (compose sIx (compose s2 s1))
     pure (sAll, apply sAll tv)
   EAssign l r -> do
+    -- Guard: only mutable bindings may be assigned to
+    case l of
+      EVar x -> case M.lookup x env of
+        Just (_, Immutable) -> throwError (ImmutableAssign x)
+        _                   -> pure ()
+      _ -> pure ()  -- member/index assigns are permitted
     (s1, tl) <- inferExpr env l
     (s2, tr) <- inferExpr (apply s1 env) r
     s3 <- unify (apply s2 tl) tr
@@ -348,7 +361,7 @@ inferStmt env = \case
   SExpr e -> do
     (s, _) <- inferExpr env e
     pure (s, apply s env)
-  SLet name mTy rhs -> do
+  SLet mut name mTy rhs -> do
     when (M.member name env) $
       throwError (DuplicateBinding name)
 
@@ -362,7 +375,7 @@ inferStmt env = \case
         env' = apply sAll env
         tFinal = apply sAll tRhs
         sch = generalize env' tFinal
-    pure (sAll, M.insert name sch env')
+    pure (sAll, M.insert name (sch, mut) env')
   SReturn _ ->
     -- Statement-level return checking can be made function-context-sensitive later.
     pure (emptySubst, env)
@@ -387,10 +400,10 @@ inferStmt env = \case
     paramTypes <- mapM (\(Param _ mt) -> maybe fresh fromSurfaceType mt) params
     retType <- maybe fresh fromSurfaceType mRet
     let funType = TFunT paramTypes retType
-        envRec = M.insert name (Forall [] funType) env
+        envRec = M.insert name (Forall [] funType, Immutable) env
         envParams =
           foldl
-            (\e (Param n _, t) -> M.insert n (Forall [] t) e)
+            (\e (Param n _, t) -> M.insert n (Forall [] t, Immutable) e)
             envRec
             (zip params paramTypes)
 
@@ -399,7 +412,7 @@ inferStmt env = \case
     let funTypeFinal = apply sBody funType
         envApplied = apply sBody env
         sch = generalize envApplied funTypeFinal
-        envOut = M.insert name sch envApplied
+        envOut = M.insert name (sch, Immutable) envApplied
 
     pure (sBody, envOut)
 
@@ -471,6 +484,6 @@ inferExprInEmpty e = runInfer $ do
 preludeEnv :: TypeEnv
 preludeEnv =
   M.fromList
-    [ ("print", Forall [0] (TFunT [TV 0] TNullT)),
-      ("toString", Forall [1] (TFunT [TV 1] TStringT))
+    [ ("print", (Forall [0] (TFunT [TV 0] TNullT), Immutable)),
+      ("toString", (Forall [1] (TFunT [TV 1] TStringT), Immutable))
     ]

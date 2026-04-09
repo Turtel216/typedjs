@@ -92,6 +92,7 @@ arrow = symbol "=>"
 reserved :: [Text]
 reserved =
   [ "let",
+    "mut",
     "function",
     "return",
     "if",
@@ -152,16 +153,17 @@ pStmt =
 pBlock :: Parser Block
 pBlock = Block <$> braces (many pStmt)
 
--- | Parse let statement
+-- | Parse let statement. Supports optional @mut@ qualifier for mutable bindings.
 pLet :: Parser Stmt
 pLet = do
   rword "let"
+  mutFlag <- MP.option Immutable (rword "mut" $> Mutable)
   n <- identifier
   ty <- optional (colon *> pType)
   void (symbol "=")
   e <- pExpr
   void semi
-  pure (SLet n ty e)
+  pure (SLet mutFlag n ty e)
 
 -- | Parse Declaration
 pFunDecl :: Parser Stmt

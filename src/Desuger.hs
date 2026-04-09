@@ -8,7 +8,7 @@ import Data.Text (Text)
 import qualified JsIr as J
 import Ast 
   ( Program(..), Stmt(..), Expr(..), Literal(..), Param(..), Arg(..), Block(..)
-  , BinOp(..), UnOp(..)
+  , BinOp(..), UnOp(..), Mutability(..)
   )
 
 -- | Type erasure + structural lowering from TypedJS AST to JS AST.
@@ -18,9 +18,9 @@ lowerProgram (Program ss) = J.JSProgram (map lowerStmt ss)
 -- | Lower Stmt into JsStmt
 lowerStmt :: Stmt -> J.JSStmt
 lowerStmt = \case
-  SLet n _ e ->
-    -- Emit const by default. TODO: track mutability, switch to JSLet when needed.
-    J.JSConst n (lowerExpr e)
+  SLet mut n _ e -> case mut of
+    Immutable -> J.JSConst n (lowerExpr e)
+    Mutable   -> J.JSLet   n (lowerExpr e)
 
   SFun name params _retTy body ->
     J.JSFunction name (map paramName params) (lowerBlock body)

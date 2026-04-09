@@ -5,13 +5,17 @@ import Data.Text (Text)
 
 type Name = Text
 
+-- | Binding mutability qualifier
+data Mutability = Immutable | Mutable
+  deriving (Eq, Show)
+
 -- | Complete program definition
 newtype Program = Program [Stmt]
   deriving (Eq, Show)
 
 -- | Language Statement
 data Stmt
-  = SLet Name (Maybe Type) Expr
+  = SLet Mutability Name (Maybe Type) Expr
   | SFun Name [Param] (Maybe Type) Block
   | SReturn (Maybe Expr)
   | SIf Expr Block (Maybe Block)
