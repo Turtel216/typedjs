@@ -5,8 +5,59 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
+{-|
+Module      : Typecheck
+Description : Semantic analysis, environment tracking, and type inference engine.
+Stability   : experimental
+
+This module implements a robust, pass-based typechecker based on an extended 
+Hindley-Milner (Algorithm W) type inference algorithm. It transforms an untyped
+surface AST ('Ast') into heavily validated semantic constructs, producing a final
+'TypeEnv' or short-circuiting with rich, span-aware errors.
+
+== Architecture Overview
+
+* __Inference Monad ('Infer'):__ 
+    Typehecking operates within a custom 'Infer' monad, a stack of @ExceptT TypeError@ 
+    over @State InferState@. This tracks the supply of fresh type variables ('TVarId'), 
+    a registry of user-defined type aliases ('TypeDeclEnv'), and the current AST 
+    node span to ensure localized error reporting.
+
+* __Type System ('IType'):__
+    Supports primitives (Int, Bool, String, Null), first-class functions ('TFunT'), 
+    arrays ('TArrayT'), and structural record/object types ('TObjectT'). Parametric 
+    polymorphism is supported via standard let-generalization ('Scheme').
+
+* __Unification & Substitution:__
+    Substitution ('Subst') is built compositionally. Unification uses standard 
+    structural equality with an occurs check to prevent infinite types. Note that 
+    object unification currently requires strict field equality (exact structural match)
+    rather than subtyping or row polymorphism.
+
+* __Mutability Tracking:__
+    The 'TypeEnv' tracks not just type schems, but also 'Mutability'. The inference 
+    rules for 'EAssign' explicitly guard against reassigning immutable bindings, 
+    emitting contextual 'NoteHelp' suggestions when violated.
+
+* __Error Handling ('TypeError'):__
+    Errors are designed for modern compiler diagnostics (e.g., in the style of Rust or Elm). 
+    The fail-fast 'ExceptT' model bails on the first unification or binding error, 
+    attaching primary spans ('teSpan'), the failure kind ('teKind'), and secondary 
+    contextual notes ('Note').
+
+== Key Entry Points
+
+* 'inferProgram': Main pipeline entry. Processes a sequence of top-level statements, 
+    populating declarations and producing a final exported 'TypeEnv'.
+* 'inferExprInEmpty': Utility for testing. Infers the type of an 
+    isolated expression against a base prelude environment.
+-}
 module Typecheck
   ( TypeError (..),
+    TypeErrorKind (..),
+    Note (..),
+    IType (..),
+    TVarId,
     Scheme (..),
     inferProgram,
     inferExprInEmpty,
@@ -107,8 +158,17 @@ instance Types TypeEnv where
   ftv env = S.unions (map ftv (M.elems env))
   apply s = M.map (apply s)
 
-data TypeError
-  = UnificationFail IType IType
+-- | A rich type error with source location and contextual notes.
+data TypeError = TypeError
+  { teSpan  :: Maybe Span     -- ^ primary error location
+  , teKind  :: TypeErrorKind  -- ^ what went wrong
+  , teNotes :: [Note]         -- ^ secondary explanations
+  }
+  deriving (Eq, Show)
+
+-- | Classification of type errors.
+data TypeErrorKind
+  = TypeMismatch IType IType          -- ^ (found, expected)
   | InfiniteType TVarId IType
   | UnboundVariable Text
   | MissingField Text
@@ -116,29 +176,54 @@ data TypeError
   | ImmutableAssign Text
   | UnboundType Text
   | DuplicateType Text
-  | TypeArityMismatch Text Int Int
-  | OtherTypeError Text
+  | TypeArityMismatch Text Int Int    -- ^ name, expected arity, got
+  | OtherError Text
+  deriving (Eq, Show)
+
+-- | Additional notes attached to a type error.
+data Note
+  = NoteText Text                     -- ^ plain @note:@ line
+  | NoteHelp Text                     -- ^ @help:@ suggestion
+  | NoteSpan Span Text                -- ^ secondary source location with message
   deriving (Eq, Show)
 
 -- | Registered type aliases: name → (type parameters, body)
 type TypeDeclEnv = M.Map Text ([Name], Type)
 
 data InferState = InferState
-  { count     :: Int
-  , typeDecls :: TypeDeclEnv
+  { count       :: Int
+  , typeDecls   :: TypeDeclEnv
+  , currentSpan :: Maybe Span    -- ^ span of the AST node currently being analysed
   }
 
 newtype Infer a = Infer {unInfer :: ExceptT TypeError (State InferState) a}
   deriving (Functor, Applicative, Monad, MonadError TypeError, MonadState InferState)
 
 runInfer :: Infer a -> Either TypeError a
-runInfer m = evalState (runExceptT (unInfer m)) (InferState 0 M.empty)
+runInfer m = evalState (runExceptT (unInfer m)) (InferState 0 M.empty Nothing)
 
 fresh :: Infer IType
 fresh = do
   st <- get
   put st {count = count st + 1}
   pure (TV (count st))
+
+-- | Execute @m@ with 'currentSpan' set to @sp@, restoring the old span on
+-- return.  If @m@ throws, the span is /not/ restored — which is fine under
+-- the fail-fast error model.
+withCurrentSpan :: Span -> Infer a -> Infer a
+withCurrentSpan sp m = do
+  old <- gets currentSpan
+  modify' (\s -> s { currentSpan = Just sp })
+  result <- m
+  modify' (\s -> s { currentSpan = old })
+  pure result
+
+-- | Throw a 'TypeError' using the current span stored in 'InferState'.
+throwSpanned :: TypeErrorKind -> [Note] -> Infer a
+throwSpanned kind notes = do
+  sp <- gets currentSpan
+  throwError (TypeError sp kind notes)
 
 instantiate :: Scheme -> Infer IType
 instantiate (Forall vars t) = do
@@ -156,7 +241,7 @@ unify :: IType -> IType -> Infer Subst
 unify t1 t2 = case (t1, t2) of
   (TFunT as1 r1, TFunT as2 r2)
     | length as1 == length as2 -> unifyMany (as1 <> [r1]) (as2 <> [r2])
-    | otherwise -> throwError (UnificationFail t1 t2)
+    | otherwise -> throwSpanned (TypeMismatch t1 t2) []
   (TV v, t) -> bind v t
   (t, TV v) -> bind v t
   (TIntT, TIntT) -> pure emptySubst
@@ -167,11 +252,11 @@ unify t1 t2 = case (t1, t2) of
   (TObjectT fa, TObjectT fb)
     | M.keysSet fa == M.keysSet fb ->
         unifyMany (M.elems fa) (M.elems fb)
-    | otherwise -> throwError (UnificationFail t1 t2)
+    | otherwise -> throwSpanned (TypeMismatch t1 t2) []
   (TCon n1 as1, TCon n2 as2)
     | n1 == n2 && length as1 == length as2 -> unifyMany as1 as2
-    | otherwise -> throwError (UnificationFail t1 t2)
-  _ -> throwError (UnificationFail t1 t2)
+    | otherwise -> throwSpanned (TypeMismatch t1 t2) []
+  _ -> throwSpanned (TypeMismatch t1 t2) []
 
 unifyMany :: [IType] -> [IType] -> Infer Subst
 unifyMany [] [] = pure emptySubst
@@ -179,12 +264,12 @@ unifyMany (t1 : ts1) (t2 : ts2) = do
   s1 <- unify t1 t2
   s2 <- unifyMany (map (apply s1) ts1) (map (apply s1) ts2)
   pure (compose s2 s1)
-unifyMany _ _ = throwError (OtherTypeError "arity mismatch in unifyMany")
+unifyMany _ _ = throwSpanned (OtherError "arity mismatch in unifyMany") []
 
 bind :: TVarId -> IType -> Infer Subst
 bind a t
   | t == TV a = pure emptySubst
-  | a `S.member` ftv t = throwError (InfiniteType a t)
+  | a `S.member` ftv t = throwSpanned (InfiniteType a t) []
   | otherwise = pure (Subst (M.singleton a t))
 
 -- | Substitute type variables in a surface Type (used for parametric alias expansion).
@@ -215,28 +300,31 @@ fromSurfaceType = \case
   TApp n args -> do
     decls <- gets typeDecls
     case M.lookup n decls of
-      Nothing -> throwError (UnboundType n)
+      Nothing -> throwSpanned (UnboundType n) []
       Just (params, body)
         | length params /= length args ->
-            throwError (TypeArityMismatch n (length params) (length args))
+            throwSpanned (TypeArityMismatch n (length params) (length args)) []
         | otherwise -> do
             let substMap = M.fromList (zip params args)
                 expanded = substSurfaceType substMap body
             fromSurfaceType expanded
   TFun as r -> TFunT <$> mapM fromSurfaceType as <*> fromSurfaceType r
 
-inferExpr :: TypeEnv -> Expr -> Infer (Subst, IType)
-inferExpr env = \case
+inferExpr :: TypeEnv -> LExpr -> Infer (Subst, IType)
+inferExpr env (Located sp expr) = withCurrentSpan sp $ case expr of
   EVar x ->
     case M.lookup x env of
-      Nothing -> throwError (UnboundVariable x)
+      Nothing -> throwError (TypeError (Just sp) (UnboundVariable x) [])
       Just (sch, _) -> do t <- instantiate sch; pure (emptySubst, t)
+
   ELit l -> case l of
     LInt _ -> pure (emptySubst, TIntT)
     LBool _ -> pure (emptySubst, TBoolT)
     LString _ -> pure (emptySubst, TStringT)
     LNull -> pure (emptySubst, TNullT)
+
   EParens e -> inferExpr env e
+
   EArray es -> do
     tv <- fresh
     (s, ts) <- inferList env es
@@ -249,6 +337,7 @@ inferExpr env = \case
         s
         ts
     pure (s', apply s' (TArrayT tv))
+
   EObject fs -> do
     (s, typed) <- foldM step (emptySubst, []) fs
     pure (s, TObjectT (M.fromList typed))
@@ -257,6 +346,7 @@ inferExpr env = \case
         (sE, tE) <- inferExpr (apply sAcc env) e
         let sAll = compose sE sAcc
         pure (sAll, out <> [(k, apply sAll tE)])
+
   ELam params mRet body -> do
     -- build parameter types
     (env', ptys) <- foldM addParam (env, []) params
@@ -275,13 +365,15 @@ inferExpr env = \case
       addParam (e, ts) (Param n mt) = do
         t <- maybe fresh fromSurfaceType mt
         pure (M.insert n (Forall [] t, Immutable) e, ts <> [t])
+
   ECall fn args -> do
     (sFn, tFn) <- inferExpr env fn
     (sArgs, argTs) <- inferArgList (apply sFn env) args
     ret <- fresh
-    sCall <- unify (apply sArgs tFn) (TFunT argTs ret)
+    sCall <- unify (TFunT argTs ret) (apply sArgs tFn)
     let sAll = compose sCall (compose sArgs sFn)
     pure (sAll, apply sAll ret)
+
   EMember obj field -> do
     (sObj, tObj0) <- inferExpr env obj
     let tObj = apply sObj tObj0
@@ -289,13 +381,14 @@ inferExpr env = \case
       TObjectT fs ->
         case M.lookup field fs of
           Just tf -> pure (sObj, tf)
-          Nothing -> throwError (MissingField field)
+          Nothing -> throwError (TypeError (Just sp) (MissingField field) [])
       -- fallback for unknown/non-concrete object terms
       _ -> do
         tv <- fresh
         sField <- unify tObj (TObjectT (M.singleton field tv))
         let sAll = compose sField sObj
         pure (sAll, apply sAll tv)
+
   EIndex arr ix -> do
     (s1, tArr) <- inferExpr env arr
     (s2, tIx) <- inferExpr (apply s1 env) ix
@@ -304,18 +397,22 @@ inferExpr env = \case
     sArr <- unify (apply sIx tArr) (TArrayT tv)
     let sAll = compose sArr (compose sIx (compose s2 s1))
     pure (sAll, apply sAll tv)
+
   EAssign l r -> do
     -- Guard: only mutable bindings may be assigned to
-    case l of
+    case locVal l of
       EVar x -> case M.lookup x env of
-        Just (_, Immutable) -> throwError (ImmutableAssign x)
-        _                   -> pure ()
+        Just (_, Immutable) ->
+          throwError (TypeError (Just sp) (ImmutableAssign x)
+            [NoteHelp ("consider making `" <> x <> "` mutable: `let mut " <> x <> " = ...`")])
+        _ -> pure ()
       _ -> pure ()  -- member/index assigns are permitted
     (s1, tl) <- inferExpr env l
     (s2, tr) <- inferExpr (apply s1 env) r
     s3 <- unify (apply s2 tl) tr
     let sAll = compose s3 (compose s2 s1)
     pure (sAll, apply sAll tr)
+
   EUnary op e -> do
     (s, t) <- inferExpr env e
     case op of
@@ -325,6 +422,7 @@ inferExpr env = \case
       Not -> do
         s' <- unify t TBoolT
         pure (compose s' s, TBoolT)
+
   EBinary op a b -> do
     (s1, ta) <- inferExpr env a
     (s2, tb) <- inferExpr (apply s1 env) b
@@ -363,6 +461,7 @@ inferExpr env = \case
       eqBool ta tb s = do
         sA <- unify (apply s ta) (apply s tb)
         pure (compose sA s, TBoolT)
+
   EIfExpr c t f -> do
     (s1, tc) <- inferExpr env c
     sBool <- unify tc TBoolT
@@ -373,7 +472,7 @@ inferExpr env = \case
     let sAll = compose s4 (compose s3 (compose s2 s1'))
     pure (sAll, apply sAll tf)
 
-inferList :: TypeEnv -> [Expr] -> Infer (Subst, [IType])
+inferList :: TypeEnv -> [LExpr] -> Infer (Subst, [IType])
 inferList env = foldM step (emptySubst, [])
   where
     step (sAcc, ts) e = do
@@ -384,14 +483,15 @@ inferList env = foldM step (emptySubst, [])
 inferArgList :: TypeEnv -> [Arg] -> Infer (Subst, [IType])
 inferArgList env args = inferList env [e | Arg e <- args]
 
-inferStmt :: TypeEnv -> Stmt -> Infer (Subst, TypeEnv)
-inferStmt env = \case
+inferStmt :: TypeEnv -> LStmt -> Infer (Subst, TypeEnv)
+inferStmt env (Located sp stmt) = withCurrentSpan sp $ case stmt of
   SExpr e -> do
     (s, _) <- inferExpr env e
     pure (s, apply s env)
+
   SLet mut name mTy rhs -> do
     when (M.member name env) $
-      throwError (DuplicateBinding name)
+      throwError (TypeError (Just sp) (DuplicateBinding name) [])
 
     (s1, tRhs) <- inferExpr env rhs
     s2 <- case mTy of
@@ -404,9 +504,11 @@ inferStmt env = \case
         tFinal = apply sAll tRhs
         sch = generalize env' tFinal
     pure (sAll, M.insert name (sch, mut) env')
+
   SReturn _ ->
     -- Statement-level return checking can be made function-context-sensitive later.
     pure (emptySubst, env)
+
   SIf cond th el -> do
     (s1, tCond) <- inferExpr env cond
     sCond <- unify tCond TBoolT
@@ -418,18 +520,22 @@ inferStmt env = \case
     let sAll = compose sEl (compose sTh sBase)
         envMerged = envEl
     pure (sAll, envMerged)
+
   SWhile cond body -> do
     (s1, tCond) <- inferExpr env cond
     s2 <- unify tCond TBoolT
     (s3, env') <- inferBlock (apply (compose s2 s1) env) body
     pure (compose s3 (compose s2 s1), env')
+
   SBlock b -> inferBlock env b
+
   STypeDecl name params body -> do
     decls <- gets typeDecls
     when (M.member name decls) $
-      throwError (DuplicateType name)
+      throwError (TypeError (Just sp) (DuplicateType name) [])
     modify' (\s -> s { typeDecls = M.insert name (params, body) decls })
     pure (emptySubst, env)
+
   SFun name params mRet body -> do
     paramTypes <- mapM (\(Param _ mt) -> maybe fresh fromSurfaceType mt) params
     retType <- maybe fresh fromSurfaceType mRet
@@ -450,8 +556,8 @@ inferStmt env = \case
 
     pure (sBody, envOut)
 
-inferStmtWithRet :: Maybe IType -> TypeEnv -> Stmt -> Infer (Subst, TypeEnv)
-inferStmtWithRet mRet env = \case
+inferStmtWithRet :: Maybe IType -> TypeEnv -> LStmt -> Infer (Subst, TypeEnv)
+inferStmtWithRet mRet env (Located sp stmt) = withCurrentSpan sp $ case stmt of
   SReturn me ->
     case (mRet, me) of
       (Nothing, _) ->
@@ -465,8 +571,10 @@ inferStmtWithRet mRet env = \case
         s2 <- unify (apply s1 te) (apply s1 rt)
         let sAll = compose s2 s1
         pure (sAll, apply sAll env)
+
   SBlock b ->
     inferBlockWithRet mRet env b
+
   SIf cond th el -> do
     (s1, tCond) <- inferExpr env cond
     sCond <- unify tCond TBoolT
@@ -477,6 +585,7 @@ inferStmtWithRet mRet env = \case
       Just b -> inferBlockWithRet mRet envTh b
     let sAll = compose sEl (compose sTh sBase)
     pure (sAll, apply sAll envEl)
+
   SWhile cond body -> do
     (s1, tCond) <- inferExpr env cond
     s2 <- unify tCond TBoolT
@@ -484,7 +593,8 @@ inferStmtWithRet mRet env = \case
     pure (compose s3 (compose s2 s1), env')
 
   -- defer to existing behavior for others
-  other -> inferStmt env other
+  other -> inferStmt env (Located sp other)
+
 
 inferBlockWithRet :: Maybe IType -> TypeEnv -> Block -> Infer (Subst, TypeEnv)
 inferBlockWithRet mRet env (Block ss) =
@@ -512,7 +622,8 @@ inferProgram (Program stmts) = runInfer $ do
 
 inferExprInEmpty :: Expr -> Either TypeError IType
 inferExprInEmpty e = runInfer $ do
-  (s, t) <- inferExpr preludeEnv e
+  let le = Located dummySpan e
+  (s, t) <- inferExpr preludeEnv le
   pure (apply s t)
 
 preludeEnv :: TypeEnv
