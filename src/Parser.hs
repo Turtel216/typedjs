@@ -16,6 +16,7 @@ import Text.Megaparsec
     between,
     choice,
     eof,
+    getSourcePos,
     many,
     notFollowedBy,
     optional,
@@ -38,6 +39,30 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 -- | Parser combinator
 type Parser = Parsec V.Void Text
+
+-- ---------------------------------------------------------------------------
+-- Source span helpers
+-- ---------------------------------------------------------------------------
+
+-- | Convert a megaparsec 'SourcePos' to our 'Pos' type.
+toPos :: MP.SourcePos -> Pos
+toPos sp = Pos (MP.unPos (MP.sourceLine sp)) (MP.unPos (MP.sourceColumn sp))
+
+-- | Run parser @p@ and wrap the result in 'Located' with the source span.
+--
+-- Note: the end position is taken *after* the parser has consumed trailing
+-- whitespace (via 'lexeme'/'sc'), so spans may be slightly wider than the
+-- actual token.  The start position is always accurate.
+withSpan :: Parser a -> Parser (Located a)
+withSpan p = do
+  start <- getSourcePos
+  x <- p
+  end <- getSourcePos
+  pure (Located (Span (toPos start) (toPos end)) x)
+
+-- ---------------------------------------------------------------------------
+-- Lexer helpers
+-- ---------------------------------------------------------------------------
 
 -- | Parse complete program
 parseProgram :: FilePath -> Text -> Either String Program
@@ -145,21 +170,25 @@ stringLit = lexeme $ do
 integer :: Parser Integer
 integer = lexeme L.decimal
 
+-- ---------------------------------------------------------------------------
+-- Statement parsers (all return LStmt)
+-- ---------------------------------------------------------------------------
+
 pProgram :: Parser Program
 pProgram = Program <$> many pStmt
 
 -- | Parse statement
-pStmt :: Parser Stmt
+pStmt :: Parser LStmt
 pStmt =
   choice
-    [ try pTypeDecl,
-      try pFunDecl,
-      try pLet,
-      pReturn,
-      pIf,
-      pWhile,
-      SBlock <$> pBlock,
-      pExprStmt
+    [ try (withSpan pTypeDecl),
+      try (withSpan pFunDecl),
+      try (withSpan pLet),
+      withSpan pReturn,
+      withSpan pIf,
+      withSpan pWhile,
+      withSpan (SBlock <$> pBlock),
+      withSpan pExprStmt
     ]
 
 -- | Parse Code block
@@ -241,28 +270,35 @@ pParam = do
   ty <- optional (colon *> pType)
   pure (Param n ty)
 
+-- ---------------------------------------------------------------------------
+-- Expression parsers (all return LExpr)
+-- ---------------------------------------------------------------------------
+
 -- | Parse Expression
-pExpr :: Parser Expr
+pExpr :: Parser LExpr
 pExpr = pAssign
 
 -- | Parse Assignment
-pAssign :: Parser Expr
+pAssign :: Parser LExpr
 pAssign = do
   lhs <- pLogicOr
   optional (symbol "=") >>= \case
     Nothing -> pure lhs
-    Just _ -> EAssign lhs <$> pAssign
+    Just _ -> do
+      rhs <- pAssign
+      let sp = Span (spanStart (locSpan lhs)) (spanEnd (locSpan rhs))
+      pure (Located sp (EAssign lhs rhs))
 
 -- | Parse Logical Or
-pLogicOr :: Parser Expr
+pLogicOr :: Parser LExpr
 pLogicOr = chainl1 pLogicAnd (symbol "||" $> EBinary Or)
 
 -- | Parse Logical And
-pLogicAnd :: Parser Expr
+pLogicAnd :: Parser LExpr
 pLogicAnd = chainl1 pEquality (symbol "&&" $> EBinary And)
 
 -- | Parse Equality expression. Both '==' and '!='
-pEquality :: Parser Expr
+pEquality :: Parser LExpr
 pEquality =
   chainl1
     pRelational
@@ -273,7 +309,7 @@ pEquality =
     )
 
 -- | Parse relational expressions
-pRelational :: Parser Expr
+pRelational :: Parser LExpr
 pRelational =
   chainl1
     pAdditive
@@ -287,10 +323,10 @@ pRelational =
 
 -- | Parse Additive binary operation:
 --
--- * `+`
+-- * @+@
 --
--- * `-`
-pAdditive :: Parser Expr
+-- * @-@
+pAdditive :: Parser LExpr
 pAdditive =
   chainl1
     pMultiplicative
@@ -302,12 +338,12 @@ pAdditive =
 
 -- | Parse multiplcative Binary operation:
 --
--- * `*`
+-- * @*@
 --
--- * `/`
+-- * @/@
 --
--- * `&`
-pMultiplicative :: Parser Expr
+-- * @%@
+pMultiplicative :: Parser LExpr
 pMultiplicative =
   chainl1
     pUnary
@@ -320,18 +356,18 @@ pMultiplicative =
 
 -- | Parse Unary operation:
 --
--- * `!`
+-- * @!@
 --
--- * `-`
-pUnary :: Parser Expr
+-- * @-@
+pUnary :: Parser LExpr
 pUnary =
   choice
-    [ symbol "!" *> (EUnary Not <$> pUnary),
-      symbol "-" *> (EUnary Neg <$> pUnary),
+    [ withSpan $ EUnary Not <$> (symbol "!" *> pUnary),
+      withSpan $ EUnary Neg <$> (symbol "-" *> pUnary),
       pPostfix
     ]
 
-pPostfix :: Parser Expr
+pPostfix :: Parser LExpr
 pPostfix = do
   base <- pPrimary
   pChain base
@@ -340,41 +376,47 @@ pPostfix = do
       choice
         [ try $ do
             args <- parens (map Arg <$> (pExpr `sepBy` comma))
-            pChain (ECall e args),
+            endP <- getSourcePos
+            let sp = Span (spanStart (locSpan e)) (toPos endP)
+            pChain (Located sp (ECall e args)),
           try $ do
             void (symbol ".")
             f <- identifier
-            pChain (EMember e f),
+            endP <- getSourcePos
+            let sp = Span (spanStart (locSpan e)) (toPos endP)
+            pChain (Located sp (EMember e f)),
           try $ do
             ix <- brackets pExpr
-            pChain (EIndex e ix),
+            endP <- getSourcePos
+            let sp = Span (spanStart (locSpan e)) (toPos endP)
+            pChain (Located sp (EIndex e ix)),
           pure e
         ]
 
-pPrimary :: Parser Expr
+pPrimary :: Parser LExpr
 pPrimary =
   choice
-    [ try pLambda,
-      try pIfExpr,
-      ELit <$> pLiteral,
-      try pObject,
-      try pArray,
-      EVar <$> identifier,
-      EParens <$> parens pExpr
+    [ try (withSpan pLambdaRaw),
+      try (withSpan pIfExprRaw),
+      withSpan (ELit <$> pLiteral),
+      try (withSpan pObjectRaw),
+      try (withSpan pArrayRaw),
+      withSpan (EVar <$> identifier),
+      withSpan (EParens <$> parens pExpr)
     ]
 
--- | Parse Lambda Expression
-pLambda :: Parser Expr
-pLambda = do
+-- | Parse Lambda Expression (returns raw Expr, wrapped by withSpan)
+pLambdaRaw :: Parser Expr
+pLambdaRaw = do
   params <- parens (pParam `sepBy` comma)
   retTy <- optional (colon *> pType)
   void arrow
   body <- pExpr
   pure (ELam params retTy body)
 
--- | Parse if expression
-pIfExpr :: Parser Expr
-pIfExpr = do
+-- | Parse if expression (returns raw Expr)
+pIfExprRaw :: Parser Expr
+pIfExprRaw = do
   rword "if"
   c <- parens pExpr
   t <- pExpr
@@ -403,13 +445,13 @@ pLiteral =
       LInt <$> integer
     ]
 
--- | Parse Arrays
-pArray :: Parser Expr
-pArray = EArray <$> brackets (pExpr `sepBy` comma)
+-- | Parse Arrays (returns raw Expr)
+pArrayRaw :: Parser Expr
+pArrayRaw = EArray <$> brackets (pExpr `sepBy` comma)
 
--- | Parse Objects
-pObject :: Parser Expr
-pObject = EObject <$> braces (pField `sepBy` comma)
+-- | Parse Objects (returns raw Expr)
+pObjectRaw :: Parser Expr
+pObjectRaw = EObject <$> braces (pField `sepBy` comma)
   where
     pField = do
       k <- identifier <|> stringLit
@@ -494,7 +536,11 @@ pTypeApp = do
   where
     angles = between (symbol "<") (symbol ">")
 
-chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+-- | Left-associative binary operator chain that produces 'LExpr' nodes.
+-- The operator function combines two 'LExpr' into a raw 'Expr', and the
+-- chain automatically wraps the result in 'Located' with a span covering
+-- both operands.
+chainl1 :: Parser LExpr -> Parser (LExpr -> LExpr -> Expr) -> Parser LExpr
 chainl1 p op = do
   x <- p
   rest x
@@ -503,6 +549,7 @@ chainl1 p op = do
       ( do
           f <- op
           y <- p
-          rest (f x y)
+          let sp = Span (spanStart (locSpan x)) (spanEnd (locSpan y))
+          rest (Located sp (f x y))
       )
         <|> pure x
