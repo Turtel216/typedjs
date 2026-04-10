@@ -73,7 +73,7 @@ function add(x: Int, y: Int): Int {
 ### Polymorphic functions 
 
 ```ts
-function id(a): a {
+function id(a) {
     return a;
   }
 
@@ -204,13 +204,20 @@ if (b > 5) {
 
 ## Error Reporting
 
-Type errors are surfaced from the typechecker, for example:
 
-- Unbound variables
-- Unification failures (e.g. `Bool` passed where `Int` is required)
-- Immutable assignment (e.g. `x = 10` where `x` was declared with `let`)
-- Duplicate bindings in same scope
-- Missing object fields (based on current object typing model)
+### Error Catalogue
+| Code | Kind | Example Message |
+| -------- | -------- | -------- |
+| E0001 | Type mismatch | expected 'Int', found 'Bool' |
+| E0002 | Infinite type | type variable 'a' occurs in 'a -> a' |
+| E0003 | Unbound variable | not found in this scope |
+| E0004 | Missing field | no field 'z' on this type |
+| E0005 | Duplicate binding | 'x' is already defined in this scope |
+| E0006 | Immutable assign | cannot assign to 'x' + help note |
+| E0007 | Undefined type | type 'Foo' is not defined |
+| E0008 | Duplicate type | type 'Point' is already defined |
+| E0009 | Type arity |'Pair' expects 2 type argument(s) but 1 were given
+| E0010 | Other | raw message |
 
 ---
 
@@ -252,3 +259,4 @@ Enable flexible object typing such as passing `{a:Int, b:Int}` where `{a:Int}` i
 - Test suite + golden tests for parser/typechecker/lowering
 - LSP features (hover/type info/diagnostics)
 - Formatter and linting tools for TypedJS
+

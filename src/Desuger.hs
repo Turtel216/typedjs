@@ -8,7 +8,7 @@ import Data.Text (Text)
 import qualified JsIr as J
 import Ast 
   ( Program(..), Stmt(..), Expr(..), Literal(..), Param(..), Arg(..), Block(..)
-  , BinOp(..), UnOp(..), Mutability(..)
+  , BinOp(..), UnOp(..), Mutability(..), Located(..), LExpr, LStmt
   )
 
 -- | Type erasure + structural lowering from TypedJS AST to JS AST.
@@ -16,13 +16,13 @@ lowerProgram :: Program -> J.JSProgram
 lowerProgram (Program ss) = J.JSProgram (map lowerStmt (filter (not . isTypeDecl) ss))
 
 -- | Type declarations are compile-time only and produce no JS output.
-isTypeDecl :: Stmt -> Bool
-isTypeDecl (STypeDecl {}) = True
-isTypeDecl _              = False
+isTypeDecl :: LStmt -> Bool
+isTypeDecl (Located _ (STypeDecl {})) = True
+isTypeDecl _                          = False
 
--- | Lower Stmt into JsStmt
-lowerStmt :: Stmt -> J.JSStmt
-lowerStmt = \case
+-- | Lower LStmt into JsStmt
+lowerStmt :: LStmt -> J.JSStmt
+lowerStmt (Located _ stmt) = case stmt of
   SLet mut n _ e -> case mut of
     Immutable -> J.JSConst n (lowerExpr e)
     Mutable   -> J.JSLet   n (lowerExpr e)
@@ -51,8 +51,9 @@ lowerStmt = \case
 lowerBlock :: Block -> J.JSBlock
 lowerBlock (Block ss) = J.JSBlock (map lowerStmt (filter (not . isTypeDecl) ss))
 
-lowerExpr :: Expr -> J.JSExpr
-lowerExpr = \case
+-- | Lower LExpr into JSExpr, discarding the source span.
+lowerExpr :: LExpr -> J.JSExpr
+lowerExpr (Located _ expr) = case expr of
   EVar x -> J.JSVar x
   ELit l -> J.JSLiteral (lowerLit l)
 

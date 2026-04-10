@@ -21,6 +21,7 @@ library
     exposed-modules:  Ast,
                       Parser,
                       Typecheck,
+                      Diagnostic,
                       JsIr,
                       Desuger,
                       Emit
