@@ -1,171 +1,126 @@
-# TypedJS - A Typed JavaScript Dialect
+# TypedJS
 
-TypedJS is a **source-to-source compiler** for a statically typed JavaScript-like language with **Hindley–Milner (HM) type inference**, implemented in Haskell.
+TypedJS is a source-to-source compiler for a statically typed JavaScript-like language featuring Hindley-Milner (HM) type inference, implemented in Haskell. It parses TypedJS source code, performs static type checking, and lowers the typed abstract syntax tree (AST) into clean, readable JavaScript output.
 
-It parses TypedJS source code, performs static type checking, and lowers the typed AST into readable JavaScript output.
+## Motivation
 
----
+JavaScript is expressive, but its dynamic typing can shift certain bugs from compile-time to runtime. TypedJS explores an alternative design space:
 
-## Why TypedJS?
+*   **Familiar syntax**: A JavaScript-like syntax to lower the learning curve.
+*   **Strong static typing**: Catches type-related errors before the code is executed.
+*   **HM type inference**: Reduces the burden of explicit type annotations while maintaining strong guarantees.
+*   **Readable generation**: Outputs idiomatic JavaScript that is easy to debug and deploy.
 
-JavaScript is expressive, but dynamic typing can move certain bugs from compile-time to runtime. TypedJS explores a different design point:
+TypedJS is intended for experimentation, education, and as a foundation for advanced language tooling.
 
-- Familiar JavaScript-like syntax
-- Strong static typing
-- Type inference (HM style) for reduced annotation burden
-- Readable JavaScript code generation
+## Getting Started
 
-TypedJS is intended for experimentation, education, and as a foundation for more advanced language tooling.
+### Prerequisites
 
----
+*   GHC (Glasgow Haskell Compiler)
+*   Cabal package manager
 
-## Current Status
-
-Implemented:
-
-- Parser (Megaparsec-based)
-- Typed AST
-- HM-style type inference/checking
-- Type annotations (optional in many places)
-- Source-to-source lowering to JavaScript
-- Precedence-aware JavaScript pretty-printer
-- Polymorphic functions and type aliases
-- Immutability by default (`let` = immutable, `let mut` = mutable)
-- Mutation checks enforced at type-check time
-
- In progress / simplified semantics in current implementation:
-
-- Algebraic Data Types(ADTs) and pattern matching
-- Object typing is currently closed/exact in unification-heavy paths
-- Return-flow analysis is basic unless enhanced with explicit return constraints
-
----
-
-## Language Overview
-
-### Variable Binding
-
-Bindings are **immutable by default**. Use `let mut` to declare a mutable binding:
-
-```ts
-let x = 42;        // immutable — compiles to `const`
-let mut y = 0;     // mutable  — compiles to `let`
-y = y + 1;         // OK
-
-// x = 10;         // TYPE ERROR: cannot assign to immutable binding `x`
-```
-
-Optional type annotations:
-
-```ts
-let a: Int = 42;
-let mut b: Int = 0;
-```
-
-### Functions
-
-```ts
-function add(x: Int, y: Int): Int {
-  return x + y;
-}
-```
-
-### Polymorphic functions 
-
-```ts
-function id(a) {
-    return a;
-  }
-
-let a = id(2);
-let b = id(true);
-```
-
-### Lambdas
-
-```ts
-let inc = (n: Int): Int => n + 1; // The type annotations are optional
-```
-
-### Conditionals
-
-```ts
-let v = if (true) 1 else 0;
-```
-
-### Arrays and Objects
-
-```ts
-let arr = [1, 2, 3];
-let obj = { a: 1, b: 2 };
-let x: Int = obj.a;
-```
-
-### Higher-Order Functions
-
-```ts
-let apply = (f, x) => f(x);
-let id = (z) => z;
-let result = apply(id, 42);
-```
-
-### Prelude
-
-```ts 
-let x = 5;
-print(5); // maps to Javascript's console.log
-```
-
-### User defined Types and Parametric type aliases
-
-```ts 
-type Pair<A, B> = { first: A, second: B };
-
-let p: Pair<Int, String> = { first: 42, second: "hello" };
-print(p.first);
-```
-
----
-
-## Type System (Current)
-
-TypedJS currently supports:
-
-- Primitive types: `Int`, `Bool`, `String`
-- Type inference for let-bound variables and lambda parameters
-- Function types and annotations
-- Let-polymorphism (`let id = (x) => x`)
-- Unification-based checking of expressions and calls
-- Polymorphic functions and type aliases
-
-### Notes
-
-- `+`, `-`, `*`, `/`, `%` are currently numeric (`Int`) operators.
-- Equality and logical operators are type-checked.
-
----
-
-## Build & Run
-
-### Build
+### Building from Source
 
 ```bash
 cabal build
 ```
 
-### Run
+### Installing the compiler
 
-```bash
-cabal run
+```bash 
+# Change --installdir to your desired output directory
+cabal install all --installdir=$HOME/.local/bin --overwrite-policy=always
 ```
 
----
+### Running the Compiler
 
-## Example
+```bash
+typedjsc --help
+  SOURCE_FILES...          Source files to process
+  -O,--opt                 Enable compiler optimizations
+  -o,--output ARG          Output file emited by Compiler[default out.js]
+  -h,--help                Show this help text
+```
 
-### Input (`example.tjs`)
+## Language Guide
 
-```ts
+### Variable Binding and Immutability
+
+Bindings are immutable by default, compiling to `const` in JavaScript. To declare a mutable binding, use `let mut`, which compiles to `let`.
+
+```typescript
+let x = 42;        // Immutable (const)
+let mut y = 0;     // Mutable (let)
+y = y + 1;         // OK
+
+// x = 10;         // TYPE ERROR: Cannot assign to immutable binding 'x'
+```
+
+Type annotations are optional but fully supported:
+
+```typescript
+let a: Int = 42;
+let mut b: Int = 0;
+```
+
+### Functions and Lambdas
+
+Functions can be declared using standard function syntax or arrow functions (lambdas). Type inference handles missing annotations where possible.
+
+```typescript
+function add(x: Int, y: Int): Int {
+  return x + y;
+}
+
+// Arrow functions
+let inc = (n: Int): Int => n + 1;
+```
+
+### Polymorphism and Higher-Order Functions
+
+TypedJS supports let-polymorphism, enabling reusable generic functions.
+
+```typescript
+let id = (x) => x;
+let apply = (f, x) => f(x);
+
+let result1 = id(42);
+let result2 = id(true);
+let result3 = apply(id, 100);
+```
+
+### Complex Types: Arrays, Objects, and Typing
+
+Arrays and objects have structural typing. Accessing fields is statically checked.
+
+```typescript
+let arr = [1, 2, 3];
+let obj = { a: 1, b: 2 };
+let val: Int = obj.a;
+```
+
+User-defined types and parametric type aliases allow mapping complex structures:
+
+```typescript
+type Pair<A, B> = { first: A, second: B };
+
+let p: Pair<Int, String> = { first: 42, second: "hello" };
+```
+
+### Control Flow
+
+Standard conditionals are type-checked to ensure consistency.
+
+```typescript
+let v = if (true) 1 else 0;
+```
+
+## Example Compilation
+
+### Input
+
+```typescript
 let id = (x) => x;
 let a = id(1);
 
@@ -183,9 +138,9 @@ if (b > 5) {
 }
 ```
 
-### Output (`out.js`)
+### Output (out.js)
 
-```js
+```javascript
 const id = (x) => x;
 const a = id(1);
 function add(x, y) {
@@ -200,63 +155,35 @@ if (b > 5) {
 }
 ```
 
----
+## Diagnostics and Error Reporting
 
-## Error Reporting
+TypedJS features a detailed diagnostic engine. Below is a catalog of currently implemented error codes:
 
+| Code  | Kind                | Example Message                                        |
+| :---- | :------------------ | :----------------------------------------------------- |
+| E0001 | Type mismatch       | expected 'Int', found 'Bool'                           |
+| E0002 | Infinite type       | type variable 'a' occurs in 'a -> a'                   |
+| E0003 | Unbound variable    | 'x' not found in this scope                            |
+| E0004 | Missing field       | no field 'z' on this type                              |
+| E0005 | Duplicate binding   | 'x' is already defined in this scope                   |
+| E0006 | Immutable assign    | cannot assign to 'x'                                   |
+| E0007 | Undefined type      | type 'Foo' is not defined                              |
+| E0008 | Duplicate type      | type 'Point' is already defined                        |
+| E0009 | Type arity          | 'Pair' expects 2 type argument(s) but 1 were given     |
+| E0010 | Internal / General  | raw message                                            |
 
-### Error Catalogue
-| Code | Kind | Example Message |
-| -------- | -------- | -------- |
-| E0001 | Type mismatch | expected 'Int', found 'Bool' |
-| E0002 | Infinite type | type variable 'a' occurs in 'a -> a' |
-| E0003 | Unbound variable | not found in this scope |
-| E0004 | Missing field | no field 'z' on this type |
-| E0005 | Duplicate binding | 'x' is already defined in this scope |
-| E0006 | Immutable assign | cannot assign to 'x' + help note |
-| E0007 | Undefined type | type 'Foo' is not defined |
-| E0008 | Duplicate type | type 'Point' is already defined |
-| E0009 | Type arity |'Pair' expects 2 type argument(s) but 1 were given
-| E0010 | Other | raw message |
+## Roadmap and Current Limitations
 
----
+**Currently Supported:**
+*   Parser (Megaparsec) and Typed AST
+*   HM-style type inference and checking
+*   Precedence-aware JavaScript pretty-printer
+*   Immutability by default and mutation checks
+*   Polymorphic functions and type aliases
 
-## Known Limitations
-
-- No modules/import system yet
-- No algebraic data types (ADTs) yet
-- No pattern matching
-- No optimization pipeline yet (just direct lowering)
-
----
-
-## Future Features
-
-### 1) Row Polymorphism for Objects
-
-Enable flexible object typing such as passing `{a:Int, b:Int}` where `{a:Int}` is expected, while preserving static safety.
-
-### 2) Richer Type Features
-
-- Exhaustive pattern matching
-- Union/intersection-like encodings (carefully designed)
-- Better nullability
-
-### 3) Improved Diagnostics
-
-- Source-span-aware type errors
-- Better mismatch explanations and hints
-- Suggested fixes
-
-### 4) Safer/Stronger Frontend Semantics
-
-- Explicit block scoping rules
-- Return-flow checking improvements
-- Duplicate declaration policy controls
-
-### 5) Developer Tooling
-
-- Test suite + golden tests for parser/typechecker/lowering
-- LSP features (hover/type info/diagnostics)
-- Formatter and linting tools for TypedJS
-
+**Future Enhancements:**
+*   Module and import system
+*   Standard algebraic data types (ADTs) and pattern matching
+*   Optimization pipeline
+*   Flexible object typing while preserving static structural safety.
+*   Language Server Protocol (LSP) integration, automated test suites (golden tests), and a dedicated code formatter.
