@@ -112,8 +112,28 @@ let p: Pair<Int, String> = { first: 42, second: "hello" };
 
 Standard conditionals are type-checked to ensure consistency.
 
+#### if expressions
 ```typescript
 let v = if (true) 1 else 0;
+```
+
+#### if statements
+```ts 
+if (2 == 2) {
+  print(2);
+} else {
+  print(3);
+}
+```
+
+#### while loops 
+```ts 
+let mut i = 0;
+
+while (i < 5) {
+  print(i);
+  i = i + ;
+}
 ```
 
 ## Example Compilation
