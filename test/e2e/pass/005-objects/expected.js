@@ -1,0 +1,15 @@
+const obj = { a: 1, b: 1 };
+console.log(obj.a);
+console.log(obj.b);
+let obj1 = { a: 2, b: 2 };
+console.log(obj1.a);
+console.log(obj1.b);
+obj1 = obj;
+console.log(obj1.a);
+console.log(obj1.b);
+const obj3 = { a: true, b: "test" };
+console.log(obj3.a);
+console.log(obj3.b);
+let obj4 = { a: 1 };
+obj4.a = obj4.a + 1;
+console.log(obj4.a);

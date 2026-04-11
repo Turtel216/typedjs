@@ -1,0 +1,15 @@
+const id = (n) => n;
+const inc = (n) => n + 1;
+const inc1 = (n) => n + 1;
+const add = (a, b) => a + b;
+const add1 = (a, b) => a + b;
+console.log(id(1));
+console.log(id(true));
+console.log(inc(1));
+console.log(inc1(1));
+console.log(add(1, 1));
+console.log(add1(1, 1));
+const apply = (a, f) => f(a);
+console.log(apply(1, id));
+const apply1 = (a, f) => f(a);
+console.log(apply1(1, id));

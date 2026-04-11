@@ -24,3 +24,6 @@ cabal.project.local~
 
 out.js
 example.tjs
+
+# E2E test result
+actual.js

@@ -19,6 +19,7 @@ TypedJS is intended for experimentation, education, and as a foundation for adva
 
 *   GHC (Glasgow Haskell Compiler)
 *   Cabal package manager
+*   NodeJs (only for e2e tests)
 
 ### Building from Source
 

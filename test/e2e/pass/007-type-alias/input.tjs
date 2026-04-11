@@ -1,0 +1,16 @@
+// Generic type alias
+type Pair<A, B> = { first: A, second: B};
+// Explicitly typed
+let p: Pair<Int, String> = { first: 42, second: "test" };
+print(p.first);
+print(p.second);
+// Infered type
+let p1 = { first: 42, second: "test1" };
+print(p1.first);
+print(p1.second);
+// Type alias as function argument
+function getSecond(p: Pair<Int, String>): String {
+  return p.second;
+}
+print(getSecond(p));
+print(getSecond(p1));

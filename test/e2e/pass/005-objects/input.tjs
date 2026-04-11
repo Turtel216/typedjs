@@ -1,0 +1,19 @@
+// Infered object
+let obj = { a: 1, b: 1 };
+print(obj.a);
+print(obj.b);
+// Declared object
+let mut obj1: {a: Int, b: Int} = { a: 2, b: 2 };
+print(obj1.a);
+print(obj1.b);
+obj1 = obj;
+print(obj1.a);
+print(obj1.b);
+// Types other then Int
+let obj3 = { a: true, b: "test" };
+print(obj3.a);
+print(obj3.b);
+// Field reassignment
+let mut obj4 = { a: 1 };
+obj4.a = obj4.a + 1;
+print(obj4.a);

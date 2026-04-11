@@ -1,0 +1,50 @@
+// Polymorphic function
+function id(n) {
+  return n;
+}
+// Typed function
+function inc(n: Int): Int {
+  return n + 1;
+}
+// Typed function infered return value
+function inc1(n: Int) {
+  return n + 1;
+}
+// Typed infered function
+function add(a, b) {
+  return a + b;
+}
+// Object argument
+function add1(obj: {a: Int, b: Int}): Int {
+  return obj.a + obj.b;
+}
+
+// Object return
+function objReturn(x, y): { a: Int, b: Int } {
+  return { a: x, b: y};
+}
+
+// Infer variable type from function
+let x = id(1);
+let obj = {a: 1, b: 1};
+let obj1 = objReturn(1, 1);
+
+print(id(1));
+print(id(true));
+print(inc(1));
+print(inc1(1));
+print(add(1, 1));
+print(add1(obj));
+print(obj1.a + obj1.b);
+
+// Typed higher order function
+function apply(a: Int, f: (Int) -> Int): Int {
+  return f(a);
+}
+print(apply(1, id));
+// Polymorphic and infered higher order function
+function apply1(a, f) {
+  return f(a);
+}
+print(apply1(1, id));
+print(apply1(true, id));

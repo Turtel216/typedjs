@@ -3,29 +3,32 @@
 module Main where
 
 import Cli
-import qualified Data.Text.IO as T
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import Desuger (lowerProgram)
 import Diagnostic (renderDiagnostic)
 import Emit (emitProgram)
 import Options.Applicative
 import Parser
 import Typecheck
+import System.IO
+import Driver
 
--- TODO: Refactor this mess
 main :: IO ()
 main = do
   opts <- execParser optsInfo
   let file = head $ sourceFile opts
-      outputF = case (outputFile opts) of
+      outputF = case outputFile opts of
         Just ofile -> ofile
         Nothing -> "out.js"
-  src <- T.readFile file
-  case parseProgram file src of
-    Left perr -> putStrLn perr
-    Right prog ->
-      case inferProgram prog of
-        Left terr -> T.putStrLn (renderDiagnostic file src terr)
-        Right _ -> do
-          let js = emitProgram (lowerProgram prog)
-          T.writeFile outputF js
-          putStrLn $ "Generated " ++ outputF
+
+  src <- TIO.readFile file
+
+  case compileSource file src of
+    Left err -> do
+      -- Print compilation errors to stderr so they don't pollute stdout
+      TIO.hPutStrLn stderr err
+    -- Optional: exitFailure
+    Right js -> do
+      TIO.writeFile outputF js
+      putStrLn $ "Generated " ++ outputF

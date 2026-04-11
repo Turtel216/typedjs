@@ -1,0 +1,46 @@
+// If statement true
+if (1 < 2) {
+  print(true);
+}
+
+// If statement false
+if (1 > 2) {
+  print(false);
+}
+
+// If else statement(true if)
+if (1 < 2) {
+  print(true);
+} else {
+  print(false);
+}
+
+// If else statement(true else)
+if (1 > 2) {
+  print(false);
+} else {
+  print(true);
+}
+
+// While
+let mut sum = 0;
+while (sum < 10) {
+  sum = sum + 1;
+}
+print(sum);
+
+// If expression(if true) infered
+let x = if (1 < 2) true else false;
+print(x);
+// If expression(else true) infered
+let x1 = if (1 > 2) false else true;
+print(x1);
+// If expression(if true) infered and complex
+let x2 = if (1 < 2) (2 + 2 * 2) else (2 - 2 * 2);
+print(x2);
+// If expression typed
+let x3: Bool = if (1 < 2) true else false;
+print(x3);
+// Nested infered if expression
+let x4 = if (1 < 2) (if (1 != 1) false else true) else false;
+print(x4);

@@ -1,0 +1,23 @@
+// Polymophic lambda
+let id = (n) => n;
+// Typed lambda
+let inc = (n: Int): Int => n + 1;
+// Infered lambda
+let inc1 = (n) => n + 1;
+// Multi argumetn lambda typed
+let add = (a, b) => a + b;
+// Multi argumetn lambda infered 
+let add1 = (a: Int, b: Int): Int => a + b;
+print(id(1));
+print(id(true));
+print(inc(1));
+print(inc1(1));
+print(add(1, 1));
+print(add1(1, 1));
+// Typed Lambda with higher order function
+let apply = (a: Int, f: (Int) -> Int): Int => f(a);
+print(apply(1, id));
+// Infered Lambda with higher order function
+let apply1 = (a, f) => f(a);
+print(apply1(1, id));
+
