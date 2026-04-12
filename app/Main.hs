@@ -7,15 +7,13 @@ import qualified Data.Text.IO as TIO
 import Options.Applicative
 import System.IO
 import Driver
+import Data.Maybe (fromMaybe)
 
 main :: IO ()
 main = do
   opts <- execParser optsInfo
   let file = head $ sourceFile opts
-      outputF = case outputFile opts of
-        Just ofile -> ofile
-        Nothing -> "out.js"
-
+      outputF = fromMaybe "out.js" (outputFile opts)
   src <- TIO.readFile file
 
   case compileSource file src of

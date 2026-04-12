@@ -1,0 +1,20 @@
+// Logic operator type inference
+let x = true && false;
+print(x);
+// And operator
+print(true && true);
+print(true && false);
+print(false && false);
+// Or operator
+print(true || true);
+print(true || false);
+print(false || false);
+// Not operator
+print(!true);
+print(!false);
+
+// Logic operator in If statement
+if (!((true && false) || false)) {
+  print(true);
+}
+
