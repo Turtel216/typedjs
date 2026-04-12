@@ -50,7 +50,7 @@ ppBlock n (J.JSBlock ss) =
   <> "\n" <> indent n <> "}"
 
 -- Precedence: bigger = tighter binding
-precAssign, precTernary, precOr, precAnd, precEq, precRel, precAdd, precMul, precUnary, precCall, precAtom :: Int
+precAssign, precTernary, precOr, precAnd, precEq, precRel, precAdd, precMul, precUnary, precCall :: Int
 precAssign  = 1
 precTernary = 2
 precOr      = 3
@@ -61,7 +61,7 @@ precAdd     = 7
 precMul     = 8
 precUnary   = 9
 precCall    = 10
-precAtom    = 11
+-- precAtom    = 11
 
 ppExpr :: Int -> J.JSExpr -> Text
 ppExpr ctx = \case

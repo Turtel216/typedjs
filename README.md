@@ -207,4 +207,4 @@ TypedJS features a detailed diagnostic engine. Below is a catalog of currently i
 *   Standard algebraic data types (ADTs) and pattern matching
 *   Optimization pipeline
 *   Flexible object typing while preserving static structural safety.
-*   Language Server Protocol (LSP) integration, automated test suites (golden tests), and a dedicated code formatter.
+*   Language Server Protocol (LSP) integration and a dedicated code formatter.

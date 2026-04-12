@@ -28,7 +28,6 @@ main = do
     Left err -> do
       -- Print compilation errors to stderr so they don't pollute stdout
       TIO.hPutStrLn stderr err
-    -- Optional: exitFailure
     Right js -> do
       TIO.writeFile outputF js
       putStrLn $ "Generated " ++ outputF
