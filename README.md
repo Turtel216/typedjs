@@ -38,9 +38,17 @@ cabal install all --installdir=$HOME/.local/bin --overwrite-policy=always
 
 ```bash
 typedjsc --help
-  SOURCE_FILES...          Source files to process
+TypeJs - type-safe Javascript dialect
+
+Usage: typedjsc SOURCE_FILES... [-O|--opt] [-o|--output ARG] [--color ARG]
+
+  Compile TypeJs files to readable javascript
+
+Available options:
+  SOURCE_FILES...          Source file to process
   -O,--opt                 Enable compiler optimizations
   -o,--output ARG          Output file emited by Compiler[default out.js]
+  --color ARG              Disable coloured output (--color=never)
   -h,--help                Show this help text
 ```
 

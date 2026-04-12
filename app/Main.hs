@@ -16,7 +16,7 @@ main = do
       outputF = fromMaybe "out.js" (outputFile opts)
   src <- TIO.readFile file
 
-  case compileSource file src of
+  case compileSource (disableColor opts) file src of
     Left err -> do
       -- Print compilation errors to stderr so they don't pollute stdout
       TIO.hPutStrLn stderr err

@@ -8,6 +8,7 @@ data Options = Options
   { sourceFile :: [FilePath] -- ^ Source file
   , optimizations :: Bool     -- ^ Enable optimizations
   , outputFile :: Maybe FilePath    -- ^ Output file emited by compiler      
+  , disableColor :: Bool      -- ^ Disable colored output
   } deriving (Show)
 
 -- | Parser for CLI options
@@ -24,6 +25,9 @@ optionsParser = Options
         ( long "output"
        <> short 'o'
        <> help "Output file emited by Compiler[default out.js]" ))
+  <*> fmap (== Just "never") (optional (option str
+        ( long "color"
+       <> help "Disable coloured output (--color=never)" )))
 
 -- | Full parser with help text
 optsInfo :: ParserInfo Options

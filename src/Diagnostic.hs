@@ -20,14 +20,17 @@ import Typecheck (IType (..), Note (..), TVarId, TypeError (..), TypeErrorKind (
 ansi :: Text -> Text -> Text
 ansi code t = "\ESC[" <> code <> "m" <> t <> "\ESC[0m"
 
-red :: Text -> Text
-red = ansi "1;31"
+red :: Bool -> Text -> Text
+red True = id
+red False = ansi "1;31"
 
-blue :: Text -> Text
-blue = ansi "1;34"
+blue :: Bool -> Text -> Text
+blue True = id
+blue False = ansi "1;34"
 
-bold :: Text -> Text
-bold = ansi "1"
+bold :: Bool -> Text -> Text
+bold True = id
+bold False = ansi "1"
 
 -- | Render an 'IType' as a user-friendly string.
 prettyType :: IType -> Text
@@ -118,9 +121,9 @@ errorDetail = \case
   OtherError msg -> msg
 
 -- | Render the coloured header line:  @error[E0001]: type mismatch@
-errorHeader :: TypeErrorKind -> Text
-errorHeader kind =
-  red ("error[" <> errorCode kind <> "]") <> bold (": " <> errorTitle kind)
+errorHeader :: Bool -> TypeErrorKind -> Text
+errorHeader noc kind =
+  red noc ("error[" <> errorCode kind <> "]") <> bold noc (": " <> errorTitle kind)
 
 -- | Render a source-line snippet with caret underline and message.
 --
@@ -130,15 +133,15 @@ errorHeader kind =
 -- |         ^^^^^^^^ expected `Int`, found `Bool`
 -- |
 -- @
-renderSnippet :: Int -> Text -> Span -> Text -> Text
-renderSnippet gw src (Span (Pos line col) (Pos endLine endCol)) msg =
+renderSnippet :: Bool -> Int -> Text -> Span -> Text -> Text
+renderSnippet noc gw src (Span (Pos line col) (Pos endLine endCol)) msg =
   let srcLines = T.lines src
       lineStr = tshow line
       lineNum = T.justifyRight gw ' ' lineStr
       pad = T.replicate (gw + 1) " "
-      emptyG = pad <> blue "|"
-      srcG = blue (lineNum <> " |") <> " "
-      ulG = pad <> blue "|" <> " "
+      emptyG = pad <> blue noc "|"
+      srcG = blue noc (lineNum <> " |") <> " "
+      ulG = pad <> blue noc "|" <> " "
    in if line >= 1 && line <= length srcLines
         then
           let srcLine = srcLines !! (line - 1)
@@ -156,9 +159,9 @@ renderSnippet gw src (Span (Pos line col) (Pos endLine endCol)) msg =
                 <> "\n"
                 <> ulG
                 <> spacing
-                <> red (T.replicate safeLen "^")
+                <> red noc (T.replicate safeLen "^")
                 <> " "
-                <> red msg
+                <> red noc msg
                 <> "\n"
                 <> emptyG
                 <> "\n"
@@ -166,18 +169,18 @@ renderSnippet gw src (Span (Pos line col) (Pos endLine endCol)) msg =
           emptyG
             <> "\n"
             <> ulG
-            <> red msg
+            <> red noc msg
             <> "\n"
             <> emptyG
             <> "\n"
 
-renderNote :: Int -> Note -> Text
-renderNote gw note =
+renderNote :: Bool -> Int -> Note -> Text
+renderNote noc gw note =
   let pad = T.replicate (gw + 1) " "
    in case note of
-        NoteText txt -> pad <> blue "= " <> bold "note: " <> txt <> "\n"
-        NoteHelp txt -> pad <> blue "= " <> bold "help: " <> txt <> "\n"
-        NoteSpan _ txt -> pad <> blue "= " <> bold "note: " <> txt <> "\n"
+        NoteText txt -> pad <> blue noc "= " <> bold noc "note: " <> txt <> "\n"
+        NoteHelp txt -> pad <> blue noc "= " <> bold noc "help: " <> txt <> "\n"
+        NoteSpan _ txt -> pad <> blue noc "= " <> bold noc "note: " <> txt <> "\n"
 
 -- | Render a complete, coloured diagnostic string for a 'TypeError'.
 --
@@ -190,8 +193,8 @@ renderNote gw note =
 -- |
 -- = note: …
 -- @
-renderDiagnostic :: FilePath -> Text -> TypeError -> Text
-renderDiagnostic fp src (TypeError mSpan kind notes) =
+renderDiagnostic :: Bool -> FilePath -> Text -> TypeError -> Text
+renderDiagnostic noc fp src (TypeError mSpan kind notes) =
   header
     <> "\n"
     <> locationStr
@@ -202,13 +205,13 @@ renderDiagnostic fp src (TypeError mSpan kind notes) =
       Just (Span (Pos l _) _) -> max 1 (length (show l))
       Nothing -> 1
 
-    header = errorHeader kind
+    header = errorHeader noc kind
 
     locationStr = case mSpan of
       Nothing -> ""
       Just (Span (Pos l c) _) ->
         T.replicate gutterW " "
-          <> blue "--> "
+          <> blue noc "--> "
           <> T.pack fp
           <> ":"
           <> tshow l
@@ -220,18 +223,18 @@ renderDiagnostic fp src (TypeError mSpan kind notes) =
       Nothing ->
         let pad = T.replicate (gutterW + 1) " "
          in pad
-              <> blue "|"
+              <> blue noc "|"
               <> "\n"
               <> pad
-              <> blue "| "
-              <> red (errorDetail kind)
+              <> blue noc "| "
+              <> red noc (errorDetail kind)
               <> "\n"
               <> pad
-              <> blue "|"
+              <> blue noc "|"
               <> "\n"
-      Just sp -> renderSnippet gutterW src sp (errorDetail kind)
+      Just sp -> renderSnippet noc gutterW src sp (errorDetail kind)
 
-    notesStr = T.concat [renderNote gutterW n | n <- notes]
+    notesStr = T.concat [renderNote noc gutterW n | n <- notes]
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
