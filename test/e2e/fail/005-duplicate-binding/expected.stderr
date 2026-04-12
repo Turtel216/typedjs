@@ -1,0 +1,6 @@
+error[E0005]: duplicate definition
+ --> $FILE:2:1
+  |
+2 | let x = 3;
+  | ^^^^^^^^^^ `x` is already defined in this scope
+  |

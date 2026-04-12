@@ -1,0 +1,6 @@
+error[E0001]: type mismatch
+ --> $FILE:2:1
+  |
+2 | let p: Pair<Int, Int> = { first: "hello", second: 2 };
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Int`, found `String`
+  |

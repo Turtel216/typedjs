@@ -1,0 +1,7 @@
+error[E0006]: cannot assign to immutable variable
+ --> $FILE:2:1
+  |
+2 | x = 2;
+  | ^^^^^ cannot assign to `x`
+  |
+  = help: consider making `x` mutable: `let mut x = ...`

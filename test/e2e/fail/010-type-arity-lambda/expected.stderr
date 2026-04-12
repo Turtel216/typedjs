@@ -1,0 +1,6 @@
+error[E0001]: type mismatch
+ --> $FILE:2:1
+  |
+2 | id(1, 3);
+  | ^^^^^^^^ expected `b -> b`, found `(Int, Int) -> c`
+  |

@@ -1,0 +1,6 @@
+error[E0003]: cannot find value in this scope
+ --> $FILE:1:9
+  |
+1 | let x = foo(2, 3);
+  |         ^^^ not found in this scope
+  |

@@ -1,0 +1,6 @@
+error[E0001]: type mismatch
+ --> $FILE:5:9
+  |
+5 | let x = foo(1);
+  |         ^^^^^^ expected `(Int, Int) -> Int`, found `Int -> d`
+  |

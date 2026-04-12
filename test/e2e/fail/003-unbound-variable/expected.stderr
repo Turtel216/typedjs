@@ -1,0 +1,6 @@
+error[E0003]: cannot find value in this scope
+ --> $FILE:1:14
+  |
+1 | let y: Int = x;
+  |              ^ not found in this scope
+  |

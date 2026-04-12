@@ -1,0 +1,6 @@
+error[E0001]: type mismatch
+ --> $FILE:1:1
+  |
+1 | let x: Int = true;
+  | ^^^^^^^^^^^^^^^^^^ expected `Int`, found `Bool`
+  |

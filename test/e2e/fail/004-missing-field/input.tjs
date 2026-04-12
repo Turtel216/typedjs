@@ -1,0 +1,4 @@
+type Pair<A, B> = { first: A, second: B };
+
+let p: Pair<Int, Int> = { first: 2, second: 2 };
+print(p.c);

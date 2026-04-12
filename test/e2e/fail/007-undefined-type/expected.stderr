@@ -1,0 +1,6 @@
+error[E0007]: undefined type
+ --> $FILE:1:1
+  |
+1 | let x: Foo = 3;
+  | ^^^^^^^^^^^^^^^ type `Foo` is not defined
+  |
