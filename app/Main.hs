@@ -3,14 +3,8 @@
 module Main where
 
 import Cli
-import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Desuger (lowerProgram)
-import Diagnostic (renderDiagnostic)
-import Emit (emitProgram)
 import Options.Applicative
-import Parser
-import Typecheck
 import System.IO
 import Driver
 

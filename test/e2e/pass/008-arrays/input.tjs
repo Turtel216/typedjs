@@ -1,0 +1,28 @@
+// Explicitly typed array
+let arr: [Int] = [1, 2, 3, 4];
+// Infered array
+let arr1 = [1, 2, 3, 4];
+// Array index
+let mut i = 0;
+while (i < 4) {
+  print(arr[i]);
+  i = i + 1;
+}
+// Updating array
+let mut arr2 = [1, 1, 1];
+arr2[1] = arr2[1] + 1;
+print(arr2[1]);
+// Diffrent type array
+let arr3: [Bool] = [true, true];
+print(arr3[0]);
+
+// Array function parameter infered
+function getIndex(arr, i) {
+  return arr[i];
+}
+print(getIndex(arr, 3));
+// Array function parameter typed
+function getIndex1(arr: [Int], i: Int): Int {
+  return arr[i];
+}
+print(getIndex1(arr, 3));
