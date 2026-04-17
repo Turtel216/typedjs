@@ -1,0 +1,22 @@
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+let x: Option<Int> = Option::Some(42);
+
+let val = match (x) {
+    Option::Some(v) => v + 1,
+    Option::None => 0,
+};
+
+print(val);
+
+let y: Option<String> = Option::None;
+
+let msg = match (y) {
+    Option::Some(s) => s,
+    Option::None => "empty",
+};
+
+print(msg);

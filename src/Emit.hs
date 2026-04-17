@@ -114,11 +114,14 @@ ppExpr ctx = \case
   J.JSParens e ->
     "(" <> ppExpr 0 e <> ")"
 
+  J.JSIife blk ->
+    "(() => " <> ppBlock ctx blk <> ")()"
+
 binPrec :: Text -> Int
 binPrec op
   | op == "||" = precOr
   | op == "&&" = precAnd
-  | op == "==" || op == "!=" = precEq
+  | op == "==" || op == "!=" || op == "===" || op == "!==" = precEq
   | op == "<" || op == "<=" || op == ">" || op == ">=" = precRel
   | op == "+" || op == "-" = precAdd
   | op == "*" || op == "/" || op == "%" = precMul

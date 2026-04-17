@@ -5,20 +5,23 @@
 module Desuger where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified JsIr as J
 import Ast 
   ( Program(..), Stmt(..), Expr(..), Literal(..), Param(..), Arg(..), Block(..)
   , BinOp(..), UnOp(..), Mutability(..), Located(..), LExpr, LStmt
+  , MatchArm(..), Pattern(..)
   )
 
 -- | Type erasure + structural lowering from TypedJS AST to JS AST.
 lowerProgram :: Program -> J.JSProgram
-lowerProgram (Program ss) = J.JSProgram (map lowerStmt (filter (not . isTypeDecl) ss))
+lowerProgram (Program ss) = J.JSProgram (map lowerStmt (filter (not . isCompileTimeDecl) ss))
 
--- | Type declarations are compile-time only and produce no JS output.
-isTypeDecl :: LStmt -> Bool
-isTypeDecl (Located _ (STypeDecl {})) = True
-isTypeDecl _                          = False
+-- | Type and enum declarations are compile-time only and produce no JS output.
+isCompileTimeDecl :: LStmt -> Bool
+isCompileTimeDecl (Located _ (STypeDecl {})) = True
+isCompileTimeDecl (Located _ (SEnum {}))     = True
+isCompileTimeDecl _                          = False
 
 -- | Lower LStmt into JsStmt
 lowerStmt :: LStmt -> J.JSStmt
@@ -48,8 +51,11 @@ lowerStmt (Located _ stmt) = case stmt of
   STypeDecl {} ->
     error "lowerStmt: STypeDecl should have been filtered out"
 
+  SEnum {} ->
+    error "lowerStmt: SEnum should have been filtered out"
+
 lowerBlock :: Block -> J.JSBlock
-lowerBlock (Block ss) = J.JSBlock (map lowerStmt (filter (not . isTypeDecl) ss))
+lowerBlock (Block ss) = J.JSBlock (map lowerStmt (filter (not . isCompileTimeDecl) ss))
 
 -- | Lower LExpr into JSExpr, discarding the source span.
 lowerExpr :: LExpr -> J.JSExpr
@@ -89,6 +95,48 @@ lowerExpr (Located _ expr) = case expr of
 
   EParens e ->
     J.JSParens (lowerExpr e)
+
+  -- | Variant constructor: Shape::Circle(5) => { _tag: "Circle", _0: 5 }
+  EVariant _enumName varName args ->
+    let tagField = ("_tag", J.JSLiteral (J.JSString varName))
+        dataFields = zipWith (\i a -> (indexField i, lowerExpr a)) [0 :: Int ..] args
+    in J.JSObject (tagField : dataFields)
+
+  -- | Match expression: compiled to an IIFE with if-else chain.
+  -- match (x) { A::B(y) => e1, A::C => e2 }
+  -- =>
+  -- (() => {
+  --   const _m = x;
+  --   if (_m._tag === "B") { const y = _m._0; return e1; }
+  --   if (_m._tag === "C") { return e2; }
+  -- })()
+  EMatch scrut arms ->
+    let scrutJs = lowerExpr scrut
+        bindScrut = J.JSConst "_m" scrutJs
+        armStmts = concatMap lowerMatchArm arms
+    in J.JSIife (J.JSBlock (bindScrut : armStmts))
+
+-- | Lower a single match arm to a list of JS statements.
+-- Variant arms become: if (_m._tag === "Foo") { const x = _m._0; ... return body; }
+-- Wildcard arms become: return body;
+lowerMatchArm :: MatchArm -> [J.JSStmt]
+lowerMatchArm (MatchArm pat body) = case pat of
+  PWild ->
+    [J.JSReturn (Just (lowerExpr body))]
+  PVariant _enumName varName bindings ->
+    let cond = J.JSBinary "==="
+                 (J.JSMember (J.JSVar "_m") "_tag")
+                 (J.JSLiteral (J.JSString varName))
+        -- Bind each captured variable: const x = _m._0; const y = _m._1; ...
+        bindStmts = zipWith (\i n ->
+          J.JSConst n (J.JSMember (J.JSVar "_m") (indexField i))
+          ) [0 :: Int ..] bindings
+        retStmt = J.JSReturn (Just (lowerExpr body))
+    in [J.JSIf cond (J.JSBlock (bindStmts ++ [retStmt])) Nothing]
+
+-- | Generate field name for positional variant data: _0, _1, _2, ...
+indexField :: Int -> Text
+indexField i = "_" <> T.pack (show i)
 
 lowerArg :: Arg -> J.JSExpr
 lowerArg (Arg e) = lowerExpr e

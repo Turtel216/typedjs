@@ -1,0 +1,6 @@
+error[E0010]: non-exhaustive match
+ --> $FILE:9:12
+  |
+9 | let name = match (c) {
+  |            ^^^^^^^^^^^ match on `Color` is not exhaustive, missing: `Blue`
+  |

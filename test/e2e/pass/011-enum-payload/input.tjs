@@ -1,0 +1,25 @@
+enum Shape {
+    Circle(Int),
+    Rect(Int, Int),
+    Point,
+}
+
+let s = Shape::Circle(5);
+
+let area = match (s) {
+    Shape::Circle(r) => r * r * 3,
+    Shape::Rect(w, h) => w * h,
+    Shape::Point => 0,
+};
+
+print(area);
+
+let s2 = Shape::Rect(4, 6);
+
+let area2 = match (s2) {
+    Shape::Circle(r) => r * r * 3,
+    Shape::Rect(w, h) => w * h,
+    Shape::Point => 0,
+};
+
+print(area2);

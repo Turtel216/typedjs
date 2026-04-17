@@ -117,6 +117,43 @@ type Pair<A, B> = { first: A, second: B };
 let p: Pair<Int, String> = { first: 42, second: "hello" };
 ```
 
+### Algebraic Data types and pattern matching
+
+```ts 
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+let x = Option::Some(10);
+
+let val = match (x) {
+    Option::Some(v) => v + 1,
+    Option::None => 0,
+};
+
+print(val); // prints 11
+```
+
+The compiler enforces exhaustive pattern matching. For example:
+
+```ts
+let val = match (x) {
+    Option::Some(v) => v + 1,
+};
+```
+
+The above code will throw the error: match on `Option` is not exhaustive, missing: `None`
+
+It is possible to add a wild-card catch all case to fix this
+
+```ts
+let val = match (x) {
+    Option::Some(v) => v + 1,
+    _ => 0,
+};
+```
+
 ### Control Flow
 
 Standard conditionals are type-checked to ensure consistency.
@@ -209,10 +246,10 @@ TypedJS features a detailed diagnostic engine. Below is a catalog of currently i
 *   Precedence-aware JavaScript pretty-printer
 *   Immutability by default and mutation checks
 *   Polymorphic functions and type aliases
+*   Algebraic data types (ADTs) and pattern matching
 
 **Future Enhancements:**
 *   Module and import system
-*   Standard algebraic data types (ADTs) and pattern matching
 *   Optimization pipeline
 *   Flexible object typing while preserving static structural safety.
 *   Language Server Protocol (LSP) integration and a dedicated code formatter.

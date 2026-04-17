@@ -75,7 +75,11 @@ errorCode = \case
   UnboundType {} -> "E0007"
   DuplicateType {} -> "E0008"
   TypeArityMismatch {} -> "E0009"
-  OtherError {} -> "E0010"
+  NonExhaustiveMatch {} -> "E0010"
+  UnknownVariant {} -> "E0011"
+  UnknownEnum {} -> "E0012"
+  VariantArityMismatch {} -> "E0013"
+  OtherError {} -> "E0099"
 
 -- | Short human-readable title for the error kind.
 errorTitle :: TypeErrorKind -> Text
@@ -89,6 +93,10 @@ errorTitle = \case
   UnboundType {} -> "undefined type"
   DuplicateType {} -> "duplicate type definition"
   TypeArityMismatch {} -> "wrong number of type arguments"
+  NonExhaustiveMatch {} -> "non-exhaustive match"
+  UnknownVariant {} -> "unknown variant"
+  UnknownEnum {} -> "unknown enum"
+  VariantArityMismatch {} -> "wrong number of variant fields"
   OtherError {} -> "type error"
 
 -- | Detailed message shown under the source underline.
@@ -118,6 +126,23 @@ errorDetail = \case
       <> " type argument(s) but "
       <> tshow got
       <> " were given"
+  NonExhaustiveMatch name missing ->
+    "match on `" <> name <> "` is not exhaustive, missing: "
+      <> T.intercalate ", " ["`" <> v <> "`" | v <- missing]
+  UnknownVariant enumN varN ->
+    "variant `" <> varN <> "` does not exist on enum `" <> enumN <> "`"
+  UnknownEnum name ->
+    "enum `" <> name <> "` is not defined"
+  VariantArityMismatch enumN varN expected got ->
+    "variant `"
+      <> varN
+      <> "` of enum `"
+      <> enumN
+      <> "` expects "
+      <> tshow expected
+      <> " field(s) but "
+      <> tshow got
+      <> " were given"
   OtherError msg -> msg
 
 -- | Render the coloured header line:  @error[E0001]: type mismatch@
@@ -126,13 +151,6 @@ errorHeader noc kind =
   red noc ("error[" <> errorCode kind <> "]") <> bold noc (": " <> errorTitle kind)
 
 -- | Render a source-line snippet with caret underline and message.
---
--- @
--- |
--- 6 | let b = id(true);
--- |         ^^^^^^^^ expected `Int`, found `Bool`
--- |
--- @
 renderSnippet :: Bool -> Int -> Text -> Span -> Text -> Text
 renderSnippet noc gw src (Span (Pos line col) (Pos endLine endCol)) msg =
   let srcLines = T.lines src
@@ -183,16 +201,6 @@ renderNote noc gw note =
         NoteSpan _ txt -> pad <> blue noc "= " <> bold noc "note: " <> txt <> "\n"
 
 -- | Render a complete, coloured diagnostic string for a 'TypeError'.
---
--- @
--- error[E0001]: type mismatch
--- --> example.tjs:6:9
--- |
--- 6 | let b = id(true);
--- |         ^^^^^^^^ expected `Int`, found `Bool`
--- |
--- = note: …
--- @
 renderDiagnostic :: Bool -> FilePath -> Text -> TypeError -> Text
 renderDiagnostic noc fp src (TypeError mSpan kind notes) =
   header

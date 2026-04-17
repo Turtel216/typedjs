@@ -165,6 +165,8 @@ reserved =
     "false",
     "null",
     "type",
+    "enum",
+    "match",
     "Int",
     "Bool",
     "String"
@@ -214,7 +216,8 @@ pProgram = Program <$> many pStmt
 pStmt :: Parser LStmt
 pStmt =
   choice
-    [ try (withSpan pTypeDecl),
+    [ try (withSpan pEnumDecl),
+      try (withSpan pTypeDecl),
       try (withSpan pFunDecl),
       try (withSpan pLet),
       withSpan pReturn,
@@ -253,6 +256,22 @@ pTypeDecl = do
   pure (STypeDecl name params body)
   where
     angles = between (symbol "<") (symbol ">")
+
+-- | Parse enum declaration: @enum Shape { Circle(Int), Point }@
+-- Also supports parametric enums: @enum Option\<T\> { Some(T), None }@
+pEnumDecl :: Parser Stmt
+pEnumDecl = do
+  rword "enum"
+  name <- upperIdentifier
+  params <- MP.option [] (angles (identifier `sepBy1` comma))
+  variants <- braces (pVariant `MP.sepEndBy` comma)
+  pure (SEnum name params variants)
+  where
+    angles = between (symbol "<") (symbol ">")
+    pVariant = do
+      vname <- upperIdentifier
+      fields <- MP.option [] (parens (pType `sepBy` comma))
+      pure (Variant vname fields)
 
 -- | Parse Declaration
 pFunDecl :: Parser Stmt
@@ -427,9 +446,11 @@ pPrimary =
   choice
     [ try (withSpan pLambdaRaw),
       try (withSpan pIfExprRaw),
+      try (withSpan pMatchExprRaw),
       withSpan (ELit <$> pLiteral),
       try (withSpan pObjectRaw),
       try (withSpan pArrayRaw),
+      try (withSpan pVariantExprRaw),
       withSpan (EVar <$> identifier),
       withSpan (EParens <$> parens pExpr)
     ]
@@ -452,6 +473,46 @@ pIfExprRaw = do
   rword "else"
   f <- pExpr
   pure (EIfExpr c t f)
+
+-- | Parse match expression (returns raw Expr).
+-- @match (scrutinee) { Pattern => expr, ... }@
+pMatchExprRaw :: Parser Expr
+pMatchExprRaw = do
+  rword "match"
+  scrut <- parens pExpr
+  arms <- braces (pMatchArm `MP.sepEndBy` comma)
+  pure (EMatch scrut arms)
+  where
+    pMatchArm = do
+      pat <- pPattern
+      void arrow
+      body <- pExpr
+      pure (MatchArm pat body)
+
+-- | Parse a pattern: @EnumName::VariantName(x, y)@ or @_@.
+pPattern :: Parser Pattern
+pPattern =
+  choice
+    [ try pVariantPat,
+      symbol "_" $> PWild
+    ]
+  where
+    pVariantPat = do
+      enumName <- upperIdentifier
+      void (symbol "::")
+      varName <- upperIdentifier
+      bindings <- MP.option [] (parens (identifier `sepBy` comma))
+      pure (PVariant enumName varName bindings)
+
+-- | Parse variant constructor expression (returns raw Expr).
+-- @EnumName::VariantName(args)@ or @EnumName::VariantName@ (unit variant).
+pVariantExprRaw :: Parser Expr
+pVariantExprRaw = do
+  enumName <- upperIdentifier
+  void (symbol "::")
+  varName <- upperIdentifier
+  args <- MP.option [] (try $ parens (pExpr `sepBy` comma))
+  pure (EVariant enumName varName args)
 
 -- | Parse Literal:
 --

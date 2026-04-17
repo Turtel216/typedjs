@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- | Intermediete representation for untyped Javascript program. Used for Code emintion.
 module JsIr where
 
@@ -40,6 +38,7 @@ data JSExpr
   | JSBinary Text JSExpr JSExpr
   | JSTernary JSExpr JSExpr JSExpr
   | JSParens JSExpr
+  | JSIife JSBlock           -- ^ (() => { ...stmts... })()
   deriving (Eq, Show)
 
 -- | Untyped Javascript Literal IR

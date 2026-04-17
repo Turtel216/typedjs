@@ -64,7 +64,7 @@ module Typecheck
 where
 
 import Ast
-import Control.Monad (foldM, when)
+import Control.Monad (foldM, when, unless)
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.Map.Strict as M
@@ -176,6 +176,10 @@ data TypeErrorKind
   | UnboundType Text
   | DuplicateType Text
   | TypeArityMismatch Text Int Int    -- ^ name, expected arity, got
+  | NonExhaustiveMatch Text [Text]    -- ^ enum name, missing variants
+  | UnknownVariant Text Text          -- ^ enum name, variant name
+  | UnknownEnum Text                  -- ^ enum name
+  | VariantArityMismatch Text Text Int Int  -- ^ enum, variant, expected, got
   | OtherError Text
   deriving (Eq, Show)
 
@@ -189,9 +193,17 @@ data Note
 -- | Registered type aliases: name → (type parameters, body)
 type TypeDeclEnv = M.Map Text ([Name], Type)
 
+-- | Signature of a single enum variant (stored with surface types for instantiation).
+data VariantSig = VariantSig Name [Type]
+  deriving (Eq, Show)
+
+-- | Registered enum declarations: name → (type params, variant signatures).
+type EnumDeclEnv = M.Map Text ([Name], [VariantSig])
+
 data InferState = InferState
   { count       :: Int
   , typeDecls   :: TypeDeclEnv
+  , enumDecls   :: EnumDeclEnv
   , currentSpan :: Maybe Span    -- ^ span of the AST node currently being analysed
   }
 
@@ -199,7 +211,7 @@ newtype Infer a = Infer {unInfer :: ExceptT TypeError (State InferState) a}
   deriving (Functor, Applicative, Monad, MonadError TypeError, MonadState InferState)
 
 runInfer :: Infer a -> Either TypeError a
-runInfer m = evalState (runExceptT (unInfer m)) (InferState 0 M.empty Nothing)
+runInfer m = evalState (runExceptT (unInfer m)) (InferState 0 M.empty M.empty Nothing)
 
 fresh :: Infer IType
 fresh = do
@@ -298,8 +310,8 @@ fromSurfaceType = \case
       go (k, v) = (k,) <$> fromSurfaceType v
   TApp n args -> do
     decls <- gets typeDecls
+    enums <- gets enumDecls
     case M.lookup n decls of
-      Nothing -> throwSpanned (UnboundType n) []
       Just (params, body)
         | length params /= length args ->
             throwSpanned (TypeArityMismatch n (length params) (length args)) []
@@ -307,7 +319,39 @@ fromSurfaceType = \case
             let substMap = M.fromList (zip params args)
                 expanded = substSurfaceType substMap body
             fromSurfaceType expanded
+      Nothing -> case M.lookup n enums of
+        Just (params, _)
+          | length params /= length args ->
+              throwSpanned (TypeArityMismatch n (length params) (length args)) []
+          | otherwise ->
+              TCon n <$> mapM fromSurfaceType args
+        Nothing -> throwSpanned (UnboundType n) []
   TFun as r -> TFunT <$> mapM fromSurfaceType as <*> fromSurfaceType r
+
+-- | Convert an internal type back to a surface Type for use in
+-- substitution maps during enum instantiation.
+toSurfaceType :: IType -> Type
+toSurfaceType = \case
+  TV n       -> TVar (T.pack ("_tv" <> show n))
+  TIntT      -> TInt
+  TBoolT     -> TBool
+  TStringT   -> TString
+  TNullT     -> TVar "_null"   -- no surface Null type; use a placeholder
+  TFunT as r -> TFun (map toSurfaceType as) (toSurfaceType r)
+  TArrayT t  -> TArray (toSurfaceType t)
+  TObjectT fs -> TObject [(k, toSurfaceType v) | (k, v) <- M.toList fs]
+  TCon n ts  -> TApp n (map toSurfaceType ts)
+
+-- | Resolve the scrutinee type of a match expression to its enum declaration.
+-- Returns (enumName, typeParams, variantSigs, concreteTypeArgs).
+resolveEnumType :: IType -> Infer (Name, [Name], [VariantSig], [IType])
+resolveEnumType (TCon name tyArgs) = do
+  enums <- gets enumDecls
+  case M.lookup name enums of
+    Nothing -> throwSpanned (UnknownEnum name) []
+    Just (tyParams, variants) -> pure (name, tyParams, variants, tyArgs)
+resolveEnumType t =
+  throwSpanned (OtherError ("expected enum type in match, found `" <> T.pack (show t) <> "`")) []
 
 inferExpr :: TypeEnv -> LExpr -> Infer (Subst, IType)
 inferExpr env (Located sp expr) = withCurrentSpan sp $ case expr of
@@ -471,6 +515,84 @@ inferExpr env (Located sp expr) = withCurrentSpan sp $ case expr of
     let sAll = compose s4 (compose s3 (compose s2 s1'))
     pure (sAll, apply sAll tf)
 
+  -- | Variant constructor: EnumName::VariantName(args)
+  EVariant enumName varName args -> do
+    enums <- gets enumDecls
+    case M.lookup enumName enums of
+      Nothing -> throwSpanned (UnknownEnum enumName) []
+      Just (tyParams, variants) -> do
+        case lookup varName [(vn, vf) | VariantSig vn vf <- variants] of
+          Nothing -> throwSpanned (UnknownVariant enumName varName) []
+          Just fieldSurfTypes -> do
+            when (length args /= length fieldSurfTypes) $
+              throwSpanned (VariantArityMismatch enumName varName
+                (length fieldSurfTypes) (length args)) []
+            -- Generate fresh type variables for the enum's type parameters
+            freshTyArgs <- mapM (const fresh) tyParams
+            let substMap = M.fromList (zip tyParams (map toSurfaceType freshTyArgs))
+                instFields = map (substSurfaceType substMap) fieldSurfTypes
+            -- Infer each argument and unify with the instantiated field type
+            (sArgs, _) <- foldM (\(sAcc, idx) (arg, surfTy) -> do
+              (sA, tA) <- inferExpr (apply sAcc env) arg
+              iTy <- fromSurfaceType surfTy
+              sU <- unify (apply sA tA) (apply sA iTy)
+              let sAll = compose sU (compose sA sAcc)
+              pure (sAll, idx + 1)
+              ) (emptySubst, 0 :: Int) (zip args instFields)
+            let resultType = TCon enumName (map (apply sArgs) freshTyArgs)
+            pure (sArgs, resultType)
+
+  -- | Match expression: match (scrutinee) { arms }
+  EMatch scrut arms -> do
+    (sScrut, tScrut) <- inferExpr env scrut
+    -- Determine the enum being matched
+    let tScrutResolved = apply sScrut tScrut
+    (enumName, tyParams, variants, tyArgs) <-
+      resolveEnumType tScrutResolved
+    -- Build substitution from enum type params to concrete type args
+    let tyArgSurface = map toSurfaceType tyArgs
+        paramSubst = M.fromList (zip tyParams tyArgSurface)
+    -- Infer each arm
+    retTv <- fresh
+    (sFinal, coveredVariants) <- foldM (\(sAcc, covered) (MatchArm pat body) -> do
+      case pat of
+        PWild -> do
+          (sBody, tBody) <- inferExpr (apply sAcc env) body
+          sRet <- unify (apply sBody tBody) (apply sBody (apply sAcc retTv))
+          let sAll = compose sRet (compose sBody sAcc)
+          -- Wildcard covers all remaining variants
+          let allNames = S.fromList [vn | VariantSig vn _ <- variants]
+          pure (sAll, S.union covered allNames)
+        PVariant pEnum pVar bindings -> do
+          when (pEnum /= enumName) $
+            throwSpanned (OtherError ("pattern matches on `" <> pEnum
+              <> "` but scrutinee is of type `" <> enumName <> "`")) []
+          case lookup pVar [(vn, vf) | VariantSig vn vf <- variants] of
+            Nothing -> throwSpanned (UnknownVariant enumName pVar) []
+            Just fieldSurfTypes -> do
+              when (length bindings /= length fieldSurfTypes) $
+                throwSpanned (VariantArityMismatch enumName pVar
+                  (length fieldSurfTypes) (length bindings)) []
+              -- Instantiate field types
+              let instFields = map (substSurfaceType paramSubst) fieldSurfTypes
+              fieldITypes <- mapM fromSurfaceType instFields
+              -- Extend environment with pattern bindings
+              let envWithBindings = foldl
+                    (\e (n, t) -> M.insert n (Forall [] (apply sAcc t), Immutable) e)
+                    (apply sAcc env)
+                    (zip bindings fieldITypes)
+              (sBody, tBody) <- inferExpr envWithBindings body
+              sRet <- unify (apply sBody tBody) (apply sBody (apply sAcc retTv))
+              let sAll = compose sRet (compose sBody sAcc)
+              pure (sAll, S.insert pVar covered)
+      ) (sScrut, S.empty) arms
+    -- Exhaustiveness check
+    let allVariantNames = S.fromList [vn | VariantSig vn _ <- variants]
+        missing = S.toList (S.difference allVariantNames coveredVariants)
+    unless (null missing) $
+      throwSpanned (NonExhaustiveMatch enumName missing) []
+    pure (sFinal, apply sFinal retTv)
+
 inferList :: TypeEnv -> [LExpr] -> Infer (Subst, [IType])
 inferList env = foldM step (emptySubst, [])
   where
@@ -534,6 +656,37 @@ inferStmt env (Located sp stmt) = withCurrentSpan sp $ case stmt of
       throwError (TypeError (Just sp) (DuplicateType name) [])
     modify' (\s -> s { typeDecls = M.insert name (params, body) decls })
     pure (emptySubst, env)
+
+  SEnum name tyParams variants -> do
+    enums <- gets enumDecls
+    when (M.member name enums) $
+      throwError (TypeError (Just sp) (DuplicateType name) [])
+    -- Register the enum
+    let vsigs = [VariantSig vn vf | Variant vn vf <- variants]
+    modify' (\s -> s { enumDecls = M.insert name (tyParams, vsigs) enums })
+    -- Inject constructor functions into the type environment
+    envOut <- foldM (\envAcc (Variant vn vfields) -> do
+      -- Generate fresh type variables for the enum's type params
+      freshTyArgs <- mapM (const fresh) tyParams
+      let qualName = name <> "::" <> vn
+          enumIType = TCon name freshTyArgs
+      if null vfields
+        then do
+          -- Unit variant: just the enum type (polymorphic)
+          let envFtv = S.unions [ftv sch | (sch, _) <- M.elems envAcc]
+              vars = S.toList (ftv enumIType `S.difference` envFtv)
+          pure (M.insert qualName (Forall vars enumIType, Immutable) envAcc)
+        else do
+          -- Variant with fields: function type
+          let substMap = M.fromList (zip tyParams (map toSurfaceType freshTyArgs))
+              instFields = map (substSurfaceType substMap) vfields
+          fieldITypes <- mapM fromSurfaceType instFields
+          let funTy = TFunT fieldITypes enumIType
+              envFtv = S.unions [ftv sch | (sch, _) <- M.elems envAcc]
+              vars = S.toList (ftv funTy `S.difference` envFtv)
+          pure (M.insert qualName (Forall vars funTy, Immutable) envAcc)
+      ) env variants
+    pure (emptySubst, envOut)
 
   SFun name params mRet body -> do
     paramTypes <- mapM (\(Param _ mt) -> maybe fresh fromSurfaceType mt) params

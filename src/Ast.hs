@@ -42,7 +42,12 @@ data Stmt
   | SWhile LExpr Block
   | SExpr LExpr
   | SBlock Block
-  | STypeDecl Name [Name] Type   -- ^ type Foo<A, B> = { ... };
+  | STypeDecl Name [Name] Type   -- ^ e.g. type Foo<A, B> = { ... };
+  | SEnum Name [Name] [Variant]  -- ^ e.g. enum Shape<T> { Circle(T), Point }
+  deriving (Eq, Show)
+
+-- | A single variant inside an enum declaration
+data Variant = Variant Name [Type]  -- ^ Circle(Int, Int) or Point (empty list)
   deriving (Eq, Show)
 
 -- | Code block
@@ -72,6 +77,18 @@ data Expr
   | EBinary BinOp LExpr LExpr
   | EIfExpr LExpr LExpr LExpr
   | EParens LExpr
+  | EVariant Name Name [LExpr]  -- ^ e.g. Shape::Circle(5, 10)
+  | EMatch LExpr [MatchArm]    -- ^ e.g. match (expr) { arms }
+  deriving (Eq, Show)
+
+-- | A single arm in a match expression
+data MatchArm = MatchArm Pattern LExpr
+  deriving (Eq, Show)
+
+-- | Pattern in a match arm (flat, non-nested)
+data Pattern
+  = PVariant Name Name [Name]  -- ^ e.g. EnumName::VariantName(x, y, z)
+  | PWild                      -- ^ e.g. _ (catch-all)
   deriving (Eq, Show)
 
 -- | Literals
@@ -104,5 +121,5 @@ data Type
   | TArray Type
   | TObject [(Name, Type)]
   | TApp Name [Type]       -- e.g. Result<Int, String>
-  | TFun [Type] Type       -- (a, b) -> c
+  | TFun [Type] Type       -- e.g. (a, b) -> c
   deriving (Eq, Show)

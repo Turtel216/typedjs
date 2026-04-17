@@ -1,0 +1,24 @@
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+let c = Color::Red;
+
+let name = match (c) {
+    Color::Red => "red",
+    Color::Green => "green",
+    Color::Blue => "blue",
+};
+
+print(name);
+
+let c2 = Color::Blue;
+
+let name2 = match (c2) {
+    Color::Red => "r",
+    _ => "not red",
+};
+
+print(name2);

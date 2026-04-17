@@ -1,0 +1,6 @@
+enum Shape {
+    Circle(Int),
+    Rect(Int, Int),
+}
+
+let s = Shape::Bogus;

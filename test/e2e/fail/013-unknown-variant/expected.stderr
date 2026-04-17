@@ -1,0 +1,6 @@
+error[E0011]: unknown variant
+ --> $FILE:6:9
+  |
+6 | let s = Shape::Bogus;
+  |         ^^^^^^^^^^^^ variant `Bogus` does not exist on enum `Shape`
+  |
