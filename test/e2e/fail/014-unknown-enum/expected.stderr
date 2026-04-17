@@ -1,0 +1,6 @@
+error[E0012]: unknown enum
+ --> $FILE:1:9
+  |
+1 | let y = Option::Some(1);
+  |         ^^^^^^^^^^^^^^^ enum `Option` is not defined
+  |

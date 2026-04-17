@@ -1,0 +1,6 @@
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+let y = Option::Some(1, 2);

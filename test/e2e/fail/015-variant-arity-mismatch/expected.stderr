@@ -1,0 +1,6 @@
+error[E0013]: wrong number of variant fields
+ --> $FILE:6:9
+  |
+6 | let y = Option::Some(1, 2);
+  |         ^^^^^^^^^^^^^^^^^^ variant `Some` of enum `Option` expects 1 field(s) but 2 were given
+  |
