@@ -236,7 +236,11 @@ TypedJS features a detailed diagnostic engine. Below is a catalog of currently i
 | E0007 | Undefined type      | type 'Foo' is not defined                              |
 | E0008 | Duplicate type      | type 'Point' is already defined                        |
 | E0009 | Type arity          | 'Pair' expects 2 type argument(s) but 1 were given     |
-| E0010 | Internal / General  | raw message                                            |
+| E0010 | Non Exhaustive Match | match on `Color` is not exhaustive, missing: `Blue` |
+| E0011 | Unknown Variant      | variant `Bogus` does not exist on enum `Shape` |
+| E0012 | Unknown Enum         | enum `Option` is not defined |
+| E0012 | Variant Arity Mismatch | variant `Some` of enum `Option` expects 1 field(s) but 2 were given |
+| E0099 | Internal / General   | raw message                                            |
 
 ## Roadmap and Current Limitations
 
